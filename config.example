@@ -1,0 +1,26 @@
+{
+  "instance_user": "ubuntu",
+  "deploy_user": "dokku",
+  "apps": {
+    "my-app": {
+      "remote_url": "git@github.com:my-username/my-repo.git",
+      "remote_branch": "master"
+    }
+  },
+  "deploy_remote_name": "infra-deploy",
+  "system_name": "my-system",
+  "os_image_id": "ami-864d84ee",
+  "instance_type": "t2.micro",
+  "instance_key_pair_name": "my-keypair",
+  "base_instance_name": "base-instance-1",
+  "environments": ["dev", "stage", "prod"],
+  "vpc_id": "vpc-12345678",
+  "availability_zone": "us-east-1a",
+  "subnet_id": "subnet-12345678",
+  "security_groups": {
+    "my-security-group": [
+      ["tcp", "22", "22", "0.0.0.0/0", null],
+      ["tcp", "80", "80", "0.0.0.0/0", null]
+    ]
+  }
+}
