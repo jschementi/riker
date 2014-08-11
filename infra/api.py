@@ -5,6 +5,9 @@ import datetime
 import time
 
 import boto
+from boto.ec2.elb import HealthCheck
+from boto.ec2.autoscale import LaunchConfiguration
+from boto.ec2.autoscale import AutoScalingGroup
 from fabric.api import task, run, local, env, sudo, lcd, execute, put
 from fabric.contrib.files import exists, append, sed
 from fabric.operations import reboot
@@ -590,7 +593,6 @@ def go1(app_name):
         log('info', 'Not found, creating load balancer')
         #ports = [(80, 80, 'http')]
         listeners = 'Protocol=HTTP,LoadBalancerPort=80,InstanceProtocol=HTTP,InstancePort=80'
-        from boto.ec2.elb import HealthCheck
         hc = HealthCheck(target='HTTP:80/ping')
 
         # WTF: `create_load_balancer` provided by boto doesn't work, but the
@@ -614,7 +616,6 @@ def go1(app_name):
     lc_result = as_conn.get_all_launch_configurations(names=[launch_config_name])
     if len(lc_result) == 0:
         log('info', 'Not found, creating LaunchConfiguration')
-        from boto.ec2.autoscale import LaunchConfiguration
         lc = LaunchConfiguration(name=launch_config_name,
                                  image_id=app_image.id,
                                  key_name=aws.key_pair_name,
@@ -665,7 +666,6 @@ def go1(app_name):
     ag_result = as_conn.get_all_groups(names=[group_name])
     if len(ag_result) == 0:
         log('info', 'Not found, creating autoscale group')
-        from boto.ec2.autoscale import AutoScalingGroup
         ag = AutoScalingGroup(name=group_name,
                               load_balancers=[load_balancer_name], launch_config=lc,
                               desired_capacity=desired_capacity, min_size=min_size, max_size=max_size,
