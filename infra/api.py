@@ -599,6 +599,12 @@ def go1(app_name):
                                            security_groups=group_ids,
                                            subnets=[aws.subnet_id])
         lb.configure_health_check(hc)
+        cda = boto.ec2.elb.attributes.ConnectionDrainingAttribute()
+        cda.enabled = True
+        cda.timeout = 300
+        elb_conn.modify_lb_attribute(load_balancer_name=load_balancer_name,
+                                     attribute='connectionDraining',
+                                     value=cda)
 
     print '-----> Connecting to AutoScale'
     as_conn = boto.connect_autoscale()
