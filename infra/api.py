@@ -726,7 +726,7 @@ def go1(app_name):
         if all_healthy:
             log('info', 'All new instances healthy!', show_header=True)
             healthy_lb_inst_ids = [inst.instance_id for inst in lb_insts if inst.state == 'InService']
-            previous_healthy_inst_ids = [inst.instance_id for inst in existing_healthy_instances]
+            previous_healthy_inst_ids = [inst.instance_id for inst in existing_healthy_instances] if existing_group else []
             not_yet_out_of_service = set(previous_healthy_inst_ids).intersection(healthy_lb_inst_ids)
             if len(not_yet_out_of_service) > 0:
                 log('info', 'Waiting to remove previous instances ({}) from load balancer'.format(not_yet_out_of_service))
