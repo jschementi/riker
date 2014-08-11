@@ -591,21 +591,13 @@ def go1(app_name):
         log('info', 'Found {}'.format(load_balancer_name))
     except boto.exception.BotoServerError:
         log('info', 'Not found, creating load balancer')
-        #ports = [(80, 80, 'http')]
-        listeners = 'Protocol=HTTP,LoadBalancerPort=80,InstanceProtocol=HTTP,InstancePort=80'
+        listeners = [(80, 80, 'HTTP', 'HTTP')]
         hc = HealthCheck(target='HTTP:80/ping')
-
-        # WTF: `create_load_balancer` provided by boto doesn't work, but the
-        # `create-load-balancer` command from aws-cli does
-        #lb = elb_conn.create_load_balancer(name=load_balancer_name,
-                                           #listeners=ports,
-                                           #security_groups=group_ids,
-                                           #subnets=[aws.subnet_id])
-        local('aws elb create-load-balancer --load-balancer-name {} --listeners {} --subnets {} --security-groups {}' %
-              (load_balancer_name, listeners, aws.subnet_id, ' '.join(group_ids)))
-
-        elb_result = elb_conn.get_all_load_balancers(load_balancer_names=[load_balancer_name])
-        lb = elb_result[0]
+        lb = elb_conn.create_load_balancer(name=load_balancer_name,
+                                           zones=None,
+                                           complex_listeners=listeners,
+                                           security_groups=group_ids,
+                                           subnets=[aws.subnet_id])
         lb.configure_health_check(hc)
 
     print '-----> Connecting to AutoScale'
