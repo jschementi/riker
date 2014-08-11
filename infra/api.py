@@ -639,46 +639,108 @@ def go1(app_name):
         else:
             log('info', 'No')
 
+    if existing_group is not None:
+        existing_healthy_instances = [inst for inst in existing_group.instances if inst.lifecycle_state == 'InService' and inst.health_status == 'Healthy']
+        existing_healthy_instance_count = len(existing_healthy_instances)
+        desired_capacity = existing_group.desired_capacity
+        min_size = existing_group.min_size
+        max_size = existing_group.max_size
+        if existing_healthy_instance_count == 0 and desired_capacity == 0:
+            print '-----> WARNING: existing auto-scaling group {} has no healthy instances and a desired capacity of 0. New auto-scaling group will launch 1 instance.'.format(existing_group)
+            desired_capacity = 1
+            min_size = 1
+            max_size = max_size if max_size > 0 else 1
+    else:
+        existing_healthy_instance_count = 0
+        desired_capacity = 1
+        min_size = 1
+        max_size = 1
+
+    log('info', '{} existing instance(s) found'.format(existing_healthy_instance_count), show_header=True)
+
+    log('info', 'Existing auto-scale properties: desired_capacity={}, min_size={}, max_size={}'.format(desired_capacity, min_size, max_size))
+
     log('info', 'Auto-scaling group', show_header=True)
     group_name = "{}-{}".format(app_name, app_image.tags['deploy-id'])
     ag_result = as_conn.get_all_groups(names=[group_name])
     if len(ag_result) == 0:
         log('info', 'Not found, creating autoscale group')
         from boto.ec2.autoscale import AutoScalingGroup
-        ag = AutoScalingGroup(group_name=group_name, load_balancers=[load_balancer_name],
-                              launch_config=lc, min_size=1, max_size=1,
-                              vpc_zone_identifier=subnet_id,
-                              health_check_type='ELB', health_check_period='300')
+        ag = AutoScalingGroup(name=group_name,
+                              load_balancers=[load_balancer_name], launch_config=lc,
+                              desired_capacity=desired_capacity, min_size=min_size, max_size=max_size,
+                              health_check_type='ELB', health_check_period='300',
+                              vpc_zone_identifier=subnet_id)
         as_conn.create_auto_scaling_group(ag)
     else:
         log('info', 'Found {}'.format(group_name))
         ag = ag_result[0]
+        ag.desired_capacity = desired_capacity
+        ag.max_size = max_size
+        ag.min_size = min_size
         ag.launch_config_name = launch_config_name
         ag.update()
 
-    if existing_group is not None:
-        # TODO decrement desired capacity as new instances become healthy...
-        log('info', 'Scaling previous auto-scaling group %s down to 0' % existing_group.name, show_header=True)
-        existing_group.min_size = 0
-        existing_group.max_size = 0
-        existing_group.desired_capacity = 0
-        existing_group.update()
+    log('info', 'Waiting for new instances to become healthy', show_header=True)
+    all_healthy = False
+    for i in xrange(60):
+        if i > 0:
+            time.sleep(10)
+        elb_result = elb_conn.get_all_load_balancers(load_balancer_names=[load_balancer_name])
+        lb = elb_result[0]
+        lb_insts = lb.get_instance_health()
+        print '       Load-balancer instances: {}'.format(lb_insts)
+        # NOTE: re-get auto-scaling group to get updated instance info.
+        ag = as_conn.get_all_groups(names=[group_name])[0]
+        ag_insts = [inst for inst in ag.instances]
+        log('info', 'Auto-scaling group Instances: {}'.format(ag_insts))
+        if len(ag_insts) < desired_capacity:
+            not_yet_launched_count = desired_capacity - len(ag_insts)
+            log('info', '{} new instance(s) not yet launched'.format(not_yet_launched_count))
+            continue
+        ag_inst_ids = set(inst.instance_id for inst in ag_insts)
+        lb_inst_ids = set(inst.instance_id for inst in lb_insts)
+        asg_insts_not_in_lb = ag_inst_ids.difference(lb_inst_ids)
+        if len(asg_insts_not_in_lb) > 0:
+            log('info', '{} new instance(s) not yet in load balancer'.format(len(asg_insts_not_in_lb)))
+            continue
+        new_lb_insts = [inst for inst in lb_insts if inst.instance_id in ag_inst_ids]
+        healthy_new_lb_insts = [inst for inst in new_lb_insts if inst.state == 'InService']
+        all_healthy = len(healthy_new_lb_insts) == len(ag_insts)
+        log('info', '{} new instance(s) are healthy'.format(len(healthy_new_lb_insts)))
+        diff = existing_healthy_instance_count - len(healthy_new_lb_insts)
+        if existing_group is not None and diff >= 0:
+            change = False
+            if existing_group.desired_capacity != diff:
+                existing_group.desired_capacity = diff
+                change = True
+            if existing_group.max_size != diff:
+                existing_group.max_size = diff
+                change = True
+            if diff < existing_group.min_size:
+                existing_group.min_size = diff
+                change = True
+            if change:
+                existing_group.update()
+                log('info', 'Change previous auto-scale group {} properties: desired_capacity={}, min_size={}, max_size={}'.format(existing_group, existing_group.desired_capacity, existing_group.min_size, existing_group.max_size))
+        if all_healthy:
+            log('info', 'All new instances healthy!', show_header=True)
+            healthy_lb_inst_ids = [inst.instance_id for inst in lb_insts if inst.state == 'InService']
+            previous_healthy_inst_ids = [inst.instance_id for inst in existing_healthy_instances]
+            not_yet_out_of_service = set(previous_healthy_inst_ids).intersection(healthy_lb_inst_ids)
+            if len(not_yet_out_of_service) > 0:
+                log('info', 'Waiting to remove previous instances ({}) from load balancer'.format(not_yet_out_of_service))
+            else:
+                log('info', 'All previous instances ({}) have been removed from load balancer'.format(previous_healthy_inst_ids), show_header=True)
+        if all_healthy and len(not_yet_out_of_service) == 0:
+            break
+    else:
+        raise Exception("Timeout")
 
-    @retry(wait=1)
-    def get_activities():
-        time.sleep(2)
-        print as_conn.get_all_activities(group_name)
-
-    get_activities()
+    elb_result = elb_conn.get_all_load_balancers(load_balancer_names=[load_balancer_name])
+    lb = elb_result[0]
+    lb_insts = [inst for inst in lb.get_instance_health() if inst.state == 'InService']
+    print '-----> Deployed {} instance(s) of {} to {}'.format(lb_insts, app.name, lb.dns_name)
 
     print '-----> DONE!'
-
-def do_all():
-    for app in apps:
-        local('python -c "import infra.api; infra.api.go(\\\"%s\\\");"' % app)
-
-
-def do1_all():
-    for app in apps:
-        local('python -c "import infra.api; infra.api.go1(\\\"%s\\\");"' % app)
 
