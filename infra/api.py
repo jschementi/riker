@@ -24,7 +24,7 @@ def get_public_dns(instances):
 def ensure_running(instances, timeout=600, poll_delay=10):
     if len(instances) == 0:
         return
-    log('info', 'Waiting for instances %s to be running' % instances, show_header=True)
+    log('info', 'Waiting for instances {} to be running'.format(instances), show_header=True)
     def get_status():
         try:
             return aws.conn.get_all_instance_status([inst.id for inst in instances])
@@ -32,7 +32,7 @@ def ensure_running(instances, timeout=600, poll_delay=10):
             log('info', 'No status yet')
     def is_status_ok(statuses):
         #for s in statuses:
-        #    log('info', 'state=%s, system_status=%s' % (s.state_name, s.system_status.status))
+        #    log('info', 'state={}, system_status={}'.format(s.state_name, s.system_status.status))
         return len(statuses) > 0 and \
             all([s.state_name == 'running' and s.system_status.status == 'ok' for s in statuses])
     poll_for_condition(get_status, is_status_ok, timeout, poll_delay)
@@ -41,7 +41,7 @@ def ensure_running(instances, timeout=600, poll_delay=10):
 def ensure_complete(image_ids, timeout=1200, poll_delay=10):
     if len(image_ids) == 0:
         return
-    log('info', 'Waiting for image %s to be available' % image_ids, show_header=True)
+    log('info', 'Waiting for image {} to be available'.format(image_ids), show_header=True)
     def get_image(image_id):
         def _get_image():
             try:
@@ -50,7 +50,7 @@ def ensure_complete(image_ids, timeout=1200, poll_delay=10):
                 log('info', 'No state yet')
         return _get_image
     def is_image_available(image):
-        #log('info', 'state=%s' % (image.state if image is not None else 'noimage',))
+        #log('info', 'state={}'.format(image.state if image is not None else 'noimage',))
         return image is not None and image.state == 'available'
     for image_id in image_ids:
         poll_for_condition(get_image(image_id), is_image_available, timeout, poll_delay)
@@ -86,15 +86,15 @@ class AWS(object):
                                        subnet_id=self.subnet_id)
 
     def create_tags(self, ids, tags):
-        log('info', 'tagging resource %s: %s' % (ids, tags))
+        log('info', 'tagging resource {}: {}'.format(ids, tags))
         self.conn.create_tags(ids, tags)
 
     def create_image(self, instance_ids, name):
-        log('info', 'creating image from %s' % instance_ids)
+        log('info', 'creating image from {}'.format(instance_ids))
         image_ids = [self.conn.create_image(instance_id=instance_id,
                                             name=name)
                      for instance_id in instance_ids]
-        log('info', 'images: %s' % image_ids)
+        log('info', 'images: {}'.format(image_ids))
         return image_ids
 
     def get_security_groups(self):
@@ -118,12 +118,12 @@ class Repo(object):
 
     @synchronize('~/.infra/repo_fetch.lock')
     def fetch(self):
-        log('info', 'Fetching app %s from %s' % (self.name, self.remote_url), show_header=True)
+        log('info', 'Fetching app {} from {}'.format(self.name, self.remote_url), show_header=True)
         git_remote_host = giturlparse.parse(self.remote_url).host
         ssh.remove_from_known_hosts(git_remote_host)
         ssh.add_to_known_hosts(git_remote_host)
         if not isdir(self.path):
-            local('mkdir -p %s' % self.path)
+            local('mkdir -p {}'.format(self.path))
             git.clone_repo(self.remote_url, self.path)
         else:
             git.ensure_is_repo(self.path)
@@ -137,7 +137,7 @@ class Repo(object):
             return git.get_head_commit_sha1()
 
     def get_deploy_remote_url(self, host):
-        return '%s@%s:%s' % (DEPLOY_USER, host, self.name)
+        return '{}@{}:{}'.format(DEPLOY_USER, host, self.name)
 
 
 
@@ -177,7 +177,7 @@ class AppImage(CachedObject):
 
     def image_name(self):
         tags = self.tags()
-        return "app/%s/deploy-id/%s/version/%s" % (tags['app'], tags['deploy-id'], tags['version'])
+        return "app/{}/deploy-id/{}/version/{}".format(tags['app'], tags['deploy-id'], tags['version'])
 
     def get_deploy_id(self):
         images = [aws.conn.get_image(instance.image_id) for instance in self.instances]
@@ -187,7 +187,7 @@ class AppImage(CachedObject):
         return latest_deploy_id + 1
 
     def create(self):
-        log('info', 'Creating app image %s (deploy-id: %s)' % (self.app.name, self.get_deploy_id()), show_header=True)
+        log('info', 'Creating app image {} (deploy-id: {})'.format(self.app.name, self.get_deploy_id()), show_header=True)
         image_ids = aws.create_image([inst.id for inst in self.instances], self.image_name())
         aws.create_tags(image_ids, self.tags())
         ensure_complete(image_ids)
@@ -200,16 +200,16 @@ class LatestAppImage(CachedObject):
     def __init__(self, app):
         self.app = app
     def get(self):
-        print '-----> Looking for latest app image: %s' % self.app.name
+        print '-----> Looking for latest app image: {}'.format(self.app.name)
         images = aws.conn.get_all_images(owners=['self'], filters={'tag:app': self.app.name,
                                                                    'tag-key': 'deploy-id',
                                                                    'tag-key': 'version'})
         images_ordered_by_deploy_id = sorted(images,
                                              key=lambda image: itemgetter('deploy-id')(image.tags), reverse=True)
         for image in images_ordered_by_deploy_id:
-            print '-----> Found %s (deploy-id: %s) (image: %s)' % (self.app.name, image.tags['deploy-id'], image.id)
+            print '-----> Found {} (deploy-id: {}) (image: {})'.format(self.app.name, image.tags['deploy-id'], image.id)
             return image
-        print '-----> First deploy of %s!' % self.app.name
+        print '-----> First deploy of {}!'.format(self.app.name)
         return None
     def create(self):
         return None
@@ -222,7 +222,7 @@ class AppInstance(CachedObject):
         self.group_ids = group_ids
 
     def create(self):
-        print '-----> App instance for %s not found, running from image %s' % (self.app.name, self.image.id)
+        print '-----> App instance for {} not found, running from image {}'.format(self.app.name, self.image.id)
         reservation = aws.run_instance(self.group_ids, self.image.id)
         instance_ids = [inst.id for inst in reservation.instances]
         aws.create_tags(instance_ids, {
@@ -234,7 +234,7 @@ class AppInstance(CachedObject):
         return reservation.instances
 
     def get(self):
-        print '-----> Looking for app instance to deploy to: %s (image: %s)' % (self.app.name, self.image.id)
+        print '-----> Looking for app instance to deploy to: {} (image: {})'.format(self.app.name, self.image.id)
         return aws.conn.get_only_instances(filters={'tag:app': self.app.name,
                                                     'tag:app_instance': 'true',
                                                     'tag:deployed': 'false',
@@ -242,7 +242,7 @@ class AppInstance(CachedObject):
                                                     'instance-state-name': 'running'})
 
     def deploy_instances(self, instances):
-        print '-----> Deploying app %s to instances %s' % (self.app.name, instances)
+        print '-----> Deploying app {} to instances {}'.format(self.app.name, instances)
         ensure_running(instances)
         hosts = get_public_dns(instances)
         execute(self.deploy(), hosts=hosts)
@@ -255,13 +255,15 @@ class AppInstance(CachedObject):
             remote_branch = self.app.repo.remote_branch
             local_branch = self.app.repo.local_branch
             remote_name = DEPLOY_REMOTE_NAME
-            log('info', 'Deploying app: %s' % (app_name,), show_header=True)
+            log('info', 'Deploying app: {}'.format(app_name), show_header=True)
             git.ensure_is_repo(repo_path)
             with lcd(repo_path):
                 git.ensure_remote(remote_name, self.app.repo.get_deploy_remote_url(env.host))
                 ssh.add_to_known_hosts(env.host)
                 git.push_repo(remote_name, branch_name=remote_branch, local_branch_name=local_branch, auto_confirm=True)
-            run('dokku domains:set %s "%s"' % (app_name, '~^(www\.)?(?<domain>.+)$')) # make nginx serve this app for any server name
+            # make dokku (nginx) serve this app for any server name
+            # this is OK since we're only deploying one app per server
+            run('dokku domains:set {} "{}"'.format(app_name, '~^(www\.)?(?<domain>.+)$'))
             update_config(app_name)
             ssh.remove_from_known_hosts(env.host)
             instance_id = get_instance_id_from_server()
@@ -286,7 +288,7 @@ class BaseImage(CachedObject):
         return instances
 
     def create(self):
-        print '-----> Creating base image %s' % self.name
+        print '-----> Creating base image {}'.format(self.name)
         instances = self.get_or_create_base_instance()
         instance_ids = [inst.id for inst in instances]
         image_ids = aws.create_image(instance_ids, self.name)
@@ -301,12 +303,12 @@ class BaseImage(CachedObject):
         return None
 
     def get(self):
-        print '-----> Getting base image %s' % self.name
+        print '-----> Getting base image {}'.format(self.name)
         images = aws.conn.get_all_images(owners=['self'], filters={'name': self.name, 'tag:base_image': 'true'})
         image_ids = [image.id for image in images]
         ensure_complete(image_ids)
         for image_id in image_ids:
-            print '-----> Found %s' % image_id
+            print '-----> Found {}'.format(image_id)
             return aws.conn.get_image(image_id)
         print '-----> Not found'
         return None
@@ -322,7 +324,7 @@ class BaseInstance(CachedObject):
         self.name = name
 
     def create(self):
-        print '-----> Base instance %s not found, running from image %s' % (self.name, self.image.id)
+        print '-----> Base instance {} not found, running from image {}'.format(self.name, self.image.id)
         reservation = aws.run_instance(self.group_ids, self.image.id)
         instances = reservation.instances
         instance_ids = [inst.id for inst in instances]
@@ -334,7 +336,7 @@ class BaseInstance(CachedObject):
         return instances
 
     def get(self):
-        print '-----> Getting base instance %s (image %s)' % (self.name, self.image.id)
+        print '-----> Getting base instance {} (image {})'.format(self.name, self.image.id)
         return aws.conn.get_only_instances(filters={'tag:Name': self.name,
                                                     'tag:base_instance': 'true',
                                                     'image-id': self.image.id,
@@ -391,7 +393,7 @@ class BaseInstance(CachedObject):
         run('curl -sL https://raw.github.com/progrium/dokku/v0.2.3/bootstrap.sh > ~/dokku-install.sh')
         sudo('DOKKU_TAG=v0.2.3 bash ~/dokku-install.sh; rm -f ~/dokku-install.sh')
         put('~/.ssh/id_rsa.pub', '~', mirror_local_mode=True)
-        run('cat ~/id_rsa.pub | sudo sshcommand acl-add %s ubuntu' % (DEPLOY_USER,))
+        run('cat ~/id_rsa.pub | sudo sshcommand acl-add {} ubuntu'.format(DEPLOY_USER))
         run('rm ~/id_rsa.pub')
         reboot(wait=5*60)
         sudo('git clone https://github.com/statianzo/dokku-supervisord.git /var/lib/dokku/plugins/dokku-supervisord')
@@ -419,19 +421,19 @@ class ssh(object):
     @staticmethod
     @synchronize('~/.infra/add_to_known_hosts.lock')
     def add_to_known_hosts(host):
-        ip = local('dig +short %s' % (host,), capture=True).strip()
-        local('ssh-keyscan -H %s >> ~/.ssh/known_hosts' % (host,))
-        local('ssh-keyscan -H %s >> ~/.ssh/known_hosts' % (ip,))
-        local('ssh-keyscan -H %s,%s >> ~/.ssh/known_hosts' % (host, ip))
+        ip = local('dig +short {}'.format(host), capture=True).strip()
+        local('ssh-keyscan -H {} >> ~/.ssh/known_hosts'.format(host))
+        local('ssh-keyscan -H {} >> ~/.ssh/known_hosts'.format(ip))
+        local('ssh-keyscan -H {},{} >> ~/.ssh/known_hosts'.format(host, ip))
 
     @staticmethod
     @synchronize('~/.infra/remove_from_known_hosts.lock')
     def remove_from_known_hosts(host):
-        ip = local('dig +short %s' % (host,), capture=True).strip()
+        ip = local('dig +short {}'.format(host), capture=True).strip()
         # http://serverfault.com/questions/132970/can-i-automatically-add-a-new-host-to-known-hosts
-        local('ssh-keygen -R %s' % (host,))
-        local('ssh-keygen -R %s' % (ip,))
-        local('ssh-keygen -R %s,%s' % (host, ip))
+        local('ssh-keygen -R {}'.format(host))
+        local('ssh-keygen -R {}'.format(ip))
+        local('ssh-keygen -R {},{}'.format(host, ip))
 
 env.use_ssh_config = True
 
@@ -459,18 +461,18 @@ def get_app_config(app):
     return apps[app]
 
 def get_pem_filename(name):
-    return expanduser(join('~/.infra', '%s.pem' % (name,)))
+    return expanduser(join('~/.infra', '{}.pem'.format(name)))
 
 def get_config_path():
     return expanduser(join('~/.infra/envs', environment_name))
 
 def terminate_instances(instance_ids):
-    log('info', 'Terminating instances: %s' % instance_ids, show_header=True)
+    log('info', 'Terminating instances: {}'.format(instance_ids), show_header=True)
     return aws.conn.terminate_instances(instance_ids)
 
 def get_config(app):
     config_path = get_config_path()
-    cfg_path = join(config_path, '%s.env' % (app,))
+    cfg_path = join(config_path, '{}.env'.format(app))
     try:
         with open(cfg_path) as f:
             cfg = f.read().replace("\n", ' ').strip()
@@ -483,17 +485,17 @@ def test_docker_installation():
 
 @task
 def update_config(app, clear='yes'):
-    log('info', 'Updating config for %s' % (app,), show_header=True)
+    log('info', 'Updating config for {}'.format(app), show_header=True)
     cfg = get_config(app)
     if cfg is None:
-        log('info', "No configuration found for %s" % (app,))
+        log('info', "No configuration found for {}".format(app))
         return
     if clear == 'yes':
-        sudo('truncate -s0 /home/%s/%s/ENV' % (DEPLOY_USER, app), user=DEPLOY_USER)
-    sudo('dokku config:set %s %s' % (app, cfg), user=DEPLOY_USER)
+        sudo('truncate -s0 /home/{}/{}/ENV'.format(DEPLOY_USER, app), user=DEPLOY_USER)
+    sudo('dokku config:set {} {}'.format(app, cfg), user=DEPLOY_USER)
 
 def logs(app, tail='no'):
-    run('dokku logs %s%s' % (app, ' -t' if tail == 'yes' else ''))
+    run('dokku logs {}{}'.format(app, ' -t' if tail == 'yes' else ''))
 
 def ps():
     sudo('docker ps')
@@ -550,7 +552,7 @@ def go(app_name):
 
     terminate_instances([inst.id for inst in app_instances])
 
-    print '-----> DONE: %s images ready' % app_images
+    print '-----> DONE: {} images ready'.format(app_images)
 
 
 def go1(app_name):
@@ -583,7 +585,7 @@ def go1(app_name):
     try:
         elb_result = elb_conn.get_all_load_balancers(load_balancer_names=[load_balancer_name])
         lb = elb_result[0]
-        log('info', 'Found %s' % load_balancer_name)
+        log('info', 'Found {}'.format(load_balancer_name))
     except boto.exception.BotoServerError:
         log('info', 'Not found, creating load balancer')
         #ports = [(80, 80, 'http')]
@@ -597,7 +599,7 @@ def go1(app_name):
                                            #listeners=ports,
                                            #security_groups=group_ids,
                                            #subnets=[aws.subnet_id])
-        local('aws elb create-load-balancer --load-balancer-name %s --listeners %s --subnets %s --security-groups %s' %
+        local('aws elb create-load-balancer --load-balancer-name {} --listeners {} --subnets {} --security-groups {}' %
               (load_balancer_name, listeners, aws.subnet_id, ' '.join(group_ids)))
 
         elb_result = elb_conn.get_all_load_balancers(load_balancer_names=[load_balancer_name])
@@ -608,7 +610,7 @@ def go1(app_name):
     as_conn = boto.connect_autoscale()
 
     log('info', 'Launch configuration', show_header=True)
-    launch_config_name = "%s-%s" % (app_name, app_image.tags['deploy-id'])
+    launch_config_name = "{}-{}".format(app_name, app_image.tags['deploy-id'])
     lc_result = as_conn.get_all_launch_configurations(names=[launch_config_name])
     if len(lc_result) == 0:
         log('info', 'Not found, creating LaunchConfiguration')
@@ -620,25 +622,25 @@ def go1(app_name):
                                  instance_type=aws.instance_type)
         as_conn.create_launch_configuration(lc)
     else:
-        log('info', 'Found %s' % launch_config_name)
+        log('info', 'Found {}'.format(launch_config_name))
         lc = lc_result[0]
 
     existing_group = None
     deploy_id = int(app_image.tags['deploy-id'] or 0)
     log('info', 'Getting previous auto-scaling group', show_header=True)
     for did in xrange(deploy_id-1, 0, -1):
-        existing_group_name = "%s-%s" % (app_name, did)
-        log('info', '%s ?' % existing_group_name)
+        existing_group_name = "{}-{}".format(app_name, did)
+        log('info', '{} ?'.format(existing_group_name))
         ag_result = as_conn.get_all_groups(names=[existing_group_name])
         if len(ag_result) > 0:
             existing_group = ag_result[0]
-            log('info', 'Found %s' % existing_group.name)
+            log('info', 'Found {}'.format(existing_group.name))
             break
         else:
             log('info', 'No')
 
     log('info', 'Auto-scaling group', show_header=True)
-    group_name = "%s-%s" % (app_name, app_image.tags['deploy-id'])
+    group_name = "{}-{}".format(app_name, app_image.tags['deploy-id'])
     ag_result = as_conn.get_all_groups(names=[group_name])
     if len(ag_result) == 0:
         log('info', 'Not found, creating autoscale group')
@@ -649,7 +651,7 @@ def go1(app_name):
                               health_check_type='ELB', health_check_period='300')
         as_conn.create_auto_scaling_group(ag)
     else:
-        log('info', 'Found %s' % group_name)
+        log('info', 'Found {}'.format(group_name))
         ag = ag_result[0]
         ag.launch_config_name = launch_config_name
         ag.update()
