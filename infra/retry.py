@@ -1,5 +1,9 @@
 import time
 from functools import wraps
+from os.path import exists as local_exists
+
+from fabric.api import run, local
+from fabric.contrib.files import exists
 
 def retry(tries=10, wait=0.5, on_none=False, on_empty=False, retry_message="."):
     def deco_retry(f):
@@ -21,3 +25,20 @@ def retry(tries=10, wait=0.5, on_none=False, on_empty=False, retry_message="."):
             return f(*args, **kwargs)
         return f_retry
     return deco_retry
+
+def synchronize(lock_file_path, is_remote=False):
+    run_fn = run if is_remote else local
+    exists_fn = exists if is_remote else local_exists
+    def deco_sync(f):
+        @wraps(f)
+        def f_sync(*args, **kwargs):
+            while True:
+                if not exists_fn(lock_file_path):
+                    run_fn('mkdir -p $(dirname {0}) && touch {0}'.format(lock_file_path))
+                    result = f(*args, **kwargs)
+                    run_fn('rm {}'.format(lock_file_path))
+                    return result
+                time.sleep(5)
+        return f_sync
+    return deco_sync
+

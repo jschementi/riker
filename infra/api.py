@@ -14,7 +14,7 @@ import git_helpers as git
 import boto_helpers
 from config import load_config
 from utils import poll_for_condition, log
-from retry import retry
+from retry import synchronize
 
 aws = None
 
@@ -116,6 +116,7 @@ class Repo(object):
     def path(self):
         return expanduser(join('~/.infra/apps', self.name))
 
+    @synchronize('~/.infra/repo_fetch.lock')
     def fetch(self):
         log('info', 'Fetching app %s from %s' % (self.name, self.remote_url), show_header=True)
         git_remote_host = giturlparse.parse(self.remote_url).host
@@ -357,6 +358,7 @@ class BaseInstance(CachedObject):
             })
         return _provision
 
+    # @synchronize('~/.infra/add_swap_space.lock', is_remote=True)
     def add_swap_space(self):
         # t2.micro instances only have 512MB RAM, so compensate with swap space.
         log('info', 'Creating swap', show_header=True)
@@ -371,6 +373,7 @@ class BaseInstance(CachedObject):
         append('/etc/fstab', '/extraswap swap swap defaults 0 0', use_sudo=True)
         sudo('swapon -a')
 
+    # @synchronize('~/.infra/install_docker.lock', is_remote=True)
     def install_docker(self):
         """
         http://docs.docker.com/installation/ubuntulinux/#ubuntu-trusty-1404-lts-64-bit
@@ -379,6 +382,7 @@ class BaseInstance(CachedObject):
         run('curl -s https://get.docker.io/ubuntu/ > ~/docker_install.sh')
         sudo('sh ~/docker_install.sh; rm -f ~/docker_install.sh')
 
+    # @synchronize('~/.infra/install_dokku.lock', is_remote=True)
     def install_dokku(self):
         """
         https://github.com/progrium/dokku
@@ -395,6 +399,7 @@ class BaseInstance(CachedObject):
         sudo('git clone https://github.com/musicglue/dokku-user-env-compile.git /var/lib/dokku/plugins/user-env-compile')
         sudo('dokku plugins-install')
 
+    # @synchronize('~/.infra/install_mosh.lock', is_remote=True)
     def install_mosh(self):
         log('info', 'Installing mosh', show_header=True)
         sudo('apt-get install -y python-software-properties')
@@ -402,6 +407,7 @@ class BaseInstance(CachedObject):
         sudo('apt-get update -y')
         sudo('apt-get install -y mosh')
 
+    # @synchronize('~/.infra/configure_nginx.lock', is_remote=True)
     def configure_nginx(self):
         log('info', 'Configuring nginx', show_header=True)
         # nginx default domain name cache size is 64 bytes per domain. This may be
@@ -411,6 +417,7 @@ class BaseInstance(CachedObject):
 class ssh(object):
 
     @staticmethod
+    @synchronize('~/.infra/add_to_known_hosts.lock')
     def add_to_known_hosts(host):
         ip = local('dig +short %s' % (host,), capture=True).strip()
         local('ssh-keyscan -H %s >> ~/.ssh/known_hosts' % (host,))
@@ -418,6 +425,7 @@ class ssh(object):
         local('ssh-keyscan -H %s,%s >> ~/.ssh/known_hosts' % (host, ip))
 
     @staticmethod
+    @synchronize('~/.infra/remove_from_known_hosts.lock')
     def remove_from_known_hosts(host):
         ip = local('dig +short %s' % (host,), capture=True).strip()
         # http://serverfault.com/questions/132970/can-i-automatically-add-a-new-host-to-known-hosts
