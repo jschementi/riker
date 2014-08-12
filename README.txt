@@ -1,10 +1,10 @@
 Create an AMI for an app:
 
-    python -c "import infra.api; infra.api.go('app')"
+    python infra/main.py create-new-ami --app myapp --env myenv
 
 Deploy an app's latest AMI:
 
-    python -c "import infra.api; infra.api.go1('app')"
+    python infra/main.py deploy-ami --app myapp --env myenv
 
 Update config of a single instance:
 
