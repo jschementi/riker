@@ -4,7 +4,8 @@
   "apps": {
     "my-app": {
       "remote_url": "git@github.com:my-username/my-repo.git",
-      "remote_branch": "master"
+      "remote_branch": "master",
+      "health_check": "TCP:80"
     }
   },
   "deploy_remote_name": "infra-deploy",

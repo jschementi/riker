@@ -8,6 +8,7 @@ import boto
 from boto.ec2.elb import HealthCheck
 from boto.ec2.autoscale import LaunchConfiguration
 from boto.ec2.autoscale import AutoScalingGroup
+from boto.ec2.elb.attributes import ConnectionDrainingAttribute
 from fabric.api import task, run, local, env, sudo, lcd, execute, put
 from fabric.contrib.files import exists, append, sed
 from fabric.operations import reboot
@@ -577,6 +578,7 @@ def go1(app_name):
                                        remote_url=get_app_config(app_name)['remote_url'],
                                        remote_branch=get_app_config(app_name).get('remote_branch'),
                                        local_branch=get_app_config(app_name).get('local_branch')))
+    health_check_target = get_app_config(app_name).get('health_check', 'TCP:80')
 
     app_image = LatestAppImage(app).get()
 
@@ -592,19 +594,19 @@ def go1(app_name):
     except boto.exception.BotoServerError:
         log('info', 'Not found, creating load balancer')
         listeners = [(80, 80, 'HTTP', 'HTTP')]
-        hc = HealthCheck(target='HTTP:80/ping')
         lb = elb_conn.create_load_balancer(name=load_balancer_name,
                                            zones=None,
                                            complex_listeners=listeners,
                                            security_groups=group_ids,
                                            subnets=[aws.subnet_id])
-        lb.configure_health_check(hc)
-        cda = boto.ec2.elb.attributes.ConnectionDrainingAttribute()
-        cda.enabled = True
-        cda.timeout = 300
-        elb_conn.modify_lb_attribute(load_balancer_name=load_balancer_name,
-                                     attribute='connectionDraining',
-                                     value=cda)
+    hc = HealthCheck(target=health_check_target)
+    lb.configure_health_check(hc)
+    cda = ConnectionDrainingAttribute()
+    cda.enabled = True
+    cda.timeout = 300
+    elb_conn.modify_lb_attribute(load_balancer_name=load_balancer_name,
+                                  attribute='connectionDraining',
+                                  value=cda)
 
     print '-----> Connecting to AutoScale'
     as_conn = boto.connect_autoscale()
