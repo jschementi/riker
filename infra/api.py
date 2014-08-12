@@ -3,6 +3,7 @@ from os.path import join, isdir, expanduser
 from operator import itemgetter
 import datetime
 import time
+import re
 
 import boto
 from boto.ec2.elb import HealthCheck
@@ -144,12 +145,15 @@ class Repo(object):
         return '{}@{}:{}'.format(DEPLOY_USER, host, self.name)
 
 
-
 class App(object):
 
-    def __init__(self, name, repo):
-        self.name = name
+    def __init__(self, env_name, repo):
+        self.env_name = env_name
         self.repo = repo
+
+    @property
+    def name(self):
+        return '{}/{}'.format(self.env_name, self.repo.name)
 
 class CachedObject(object):
 
@@ -255,6 +259,8 @@ class AppInstance(CachedObject):
         @task
         def _deploy():
             app_name = self.app.name
+            repo_name = self.app.repo.name
+            env_name = self.app.env_name
             repo_path = self.app.repo.path
             remote_branch = self.app.repo.remote_branch
             local_branch = self.app.repo.local_branch
@@ -267,8 +273,8 @@ class AppInstance(CachedObject):
                 git.push_repo(remote_name, branch_name=remote_branch, local_branch_name=local_branch, auto_confirm=True)
             # make dokku (nginx) serve this app for any server name
             # this is OK since we're only deploying one app per server
-            run('dokku domains:set {} "{}"'.format(app_name, '~^(www\.)?(?<domain>.+)$'))
-            update_config(app_name)
+            run('dokku domains:set {} "{}"'.format(repo_name, '~^(www\.)?(?<domain>.+)$'))
+            update_config(repo_name, env_name)
             ssh.remove_from_known_hosts(env.host)
             instance_id = get_instance_id_from_server()
             aws.create_tags([instance_id], {
@@ -451,7 +457,6 @@ os_image_id = config['os_image_id']
 instance_type = config['instance_type']
 apps = config['apps']
 DEPLOY_REMOTE_NAME = config['deploy_remote_name']
-environment_name = config['environments'][0]
 container_template_name = config['base_instance_name']
 instance_key_pair_name = config['instance_key_pair_name']
 vpc_id = config['vpc_id']
@@ -467,15 +472,15 @@ def get_app_config(app):
 def get_pem_filename(name):
     return expanduser(join('~/.infra', '{}.pem'.format(name)))
 
-def get_config_path():
-    return expanduser(join('~/.infra/envs', environment_name))
+def get_config_path(env_name):
+    return expanduser(join('~/.infra/envs', env_name))
 
 def terminate_instances(instance_ids):
     log('info', 'Terminating instances: {}'.format(instance_ids), show_header=True)
     return aws.conn.terminate_instances(instance_ids)
 
-def get_config(app):
-    config_path = get_config_path()
+def get_config(app, env):
+    config_path = get_config_path(env)
     cfg_path = join(config_path, '{}.env'.format(app))
     try:
         with open(cfg_path) as f:
@@ -488,9 +493,9 @@ def test_docker_installation():
     sudo('docker run -i -t ubuntu /bin/bash -c "uname -a"')
 
 @task
-def update_config(app, clear='yes'):
+def update_config(app, env, clear='yes'):
     log('info', 'Updating config for {}'.format(app), show_header=True)
-    cfg = get_config(app)
+    cfg = get_config(app, env)
     if cfg is None:
         log('info', "No configuration found for {}".format(app))
         return
@@ -504,7 +509,7 @@ def logs(app, tail='no'):
 def ps():
     sudo('docker ps')
 
-def go(app_name):
+def go(app_name, env_name):
 
     global aws
     aws = AWS(key_pair_name=config['instance_key_pair_name'],
@@ -525,10 +530,11 @@ def go(app_name):
 
     group_ids=aws.get_security_group_ids()
 
-    app = App(name=app_name, repo=Repo(name=app_name,
-                                       remote_url=get_app_config(app_name)['remote_url'],
-                                       remote_branch=get_app_config(app_name).get('remote_branch'),
-                                       local_branch=get_app_config(app_name).get('local_branch')))
+    app = App(env_name=env_name,
+              repo=Repo(name=app_name,
+                        remote_url=get_app_config(app_name)['remote_url'],
+                        remote_branch=get_app_config(app_name).get('remote_branch'),
+                        local_branch=get_app_config(app_name).get('local_branch')))
 
     base_image = BaseImage(name=container_template_name,
                            base_instance=BaseInstance(name=container_template_name,
@@ -559,7 +565,7 @@ def go(app_name):
     print '-----> DONE: {} images ready'.format(app_images)
 
 
-def go1(app_name):
+def go1(app_name, env_name):
 
     global aws
     aws = AWS(key_pair_name=config['instance_key_pair_name'],
@@ -574,11 +580,15 @@ def go1(app_name):
 
     group_ids=aws.get_security_group_ids()
 
-    app = App(name=app_name, repo=Repo(name=app_name,
-                                       remote_url=get_app_config(app_name)['remote_url'],
-                                       remote_branch=get_app_config(app_name).get('remote_branch'),
-                                       local_branch=get_app_config(app_name).get('local_branch')))
     health_check_target = get_app_config(app_name).get('health_check', 'TCP:80')
+
+    app = App(env_name=env_name,
+              repo=Repo(name=app_name,
+                        remote_url=get_app_config(app_name)['remote_url'],
+                        remote_branch=get_app_config(app_name).get('remote_branch'),
+                        local_branch=get_app_config(app_name).get('local_branch')))
+
+    name = re.sub('[^A-Za-z0-9\-]', '-', app.name)
 
     app_image = LatestAppImage(app).get()
 
@@ -586,7 +596,7 @@ def go1(app_name):
     elb_conn = boto.connect_elb()
 
     log('info', 'Load balancer', show_header=True)
-    load_balancer_name = app_name
+    load_balancer_name = name
     try:
         elb_result = elb_conn.get_all_load_balancers(load_balancer_names=[load_balancer_name])
         lb = elb_result[0]
@@ -612,7 +622,7 @@ def go1(app_name):
     as_conn = boto.connect_autoscale()
 
     log('info', 'Launch configuration', show_header=True)
-    launch_config_name = "{}-{}".format(app_name, app_image.tags['deploy-id'])
+    launch_config_name = "{}-{}".format(name, app_image.tags['deploy-id'])
     lc_result = as_conn.get_all_launch_configurations(names=[launch_config_name])
     if len(lc_result) == 0:
         log('info', 'Not found, creating LaunchConfiguration')
@@ -630,7 +640,7 @@ def go1(app_name):
     deploy_id = int(app_image.tags['deploy-id'] or 0)
     log('info', 'Getting previous auto-scaling group', show_header=True)
     for did in xrange(deploy_id-1, 0, -1):
-        existing_group_name = "{}-{}".format(app_name, did)
+        existing_group_name = "{}-{}".format(name, did)
         log('info', '{} ?'.format(existing_group_name))
         ag_result = as_conn.get_all_groups(names=[existing_group_name])
         if len(ag_result) > 0:
@@ -662,7 +672,7 @@ def go1(app_name):
     log('info', 'Existing auto-scale properties: desired_capacity={}, min_size={}, max_size={}'.format(desired_capacity, min_size, max_size))
 
     log('info', 'Auto-scaling group', show_header=True)
-    group_name = "{}-{}".format(app_name, app_image.tags['deploy-id'])
+    group_name = "{}-{}".format(name, app_image.tags['deploy-id'])
     ag_result = as_conn.get_all_groups(names=[group_name])
     if len(ag_result) == 0:
         log('info', 'Not found, creating autoscale group')
@@ -685,6 +695,7 @@ def go1(app_name):
     all_healthy = False
     for i in xrange(60):
         if i > 0:
+            print '       ---'
             time.sleep(10)
         elb_result = elb_conn.get_all_load_balancers(load_balancer_names=[load_balancer_name])
         lb = elb_result[0]
