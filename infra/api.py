@@ -181,7 +181,7 @@ class AppImage(CachedObject):
 
     def image_name(self):
         tags = self.tags()
-        return "app/{}/deploy-id/{}/version/{}".format(tags['app'], tags['deploy-id'], tags['version'])
+        return "{}/{}/{}".format(tags['app'], tags['deploy-id'], tags['version'])
 
     def get_deploy_id(self):
         images = [aws.conn.get_image(instance.image_id) for instance in self.instances]
