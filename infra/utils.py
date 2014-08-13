@@ -22,3 +22,7 @@ normal = '       '
 def log(level, message, show_header=False):
     print((header if show_header else normal) +  message)
 
+def first(iterable):
+    for x in iterable:
+        return x
+    return None

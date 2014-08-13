@@ -1,25 +1,46 @@
 import sys
-from os.path import join, isdir, expanduser
+from os import walk
+from os.path import join, isdir, expanduser, relpath
 from operator import itemgetter
 import datetime
 import time
 import re
+import json
 
 import boto
+import boto.ec2
+from boto.route53.record import ResourceRecordSets
 from boto.ec2.elb import HealthCheck
 from boto.ec2.autoscale import LaunchConfiguration
 from boto.ec2.autoscale import AutoScalingGroup
 from boto.ec2.elb.attributes import ConnectionDrainingAttribute
+import fabric
 from fabric.api import task, run, local, env, sudo, lcd, execute, put
 from fabric.contrib.files import exists, append, sed
 from fabric.operations import reboot
 import giturlparse
+from tld import get_tld
 
 import git_helpers as git
 import boto_helpers
 from config import load_config
-from utils import poll_for_condition, log
+from utils import poll_for_condition, log, first
 from retry import synchronize
+
+fabric.state.output.everything = False
+
+# http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_website_region_endpoints
+s3_website_regions = {
+    'us-east-1': ('s3-website-us-east-1.amazonaws.com', 'Z3AQBSTGFYJSTF'),
+    'us-west-2': ('s3-website-us-west-2.amazonaws.com', 'Z3BJ6K6RIION7M'),
+    'us-west-1': ('s3-website-us-west-1.amazonaws.com', 'Z2F56UZL2M1ACD'),
+    'eu-west-1': ('s3-website-eu-west-1.amazonaws.com', 'Z1BKCTXD74EZPE'),
+    'ap-southeast-1': ('s3-website-ap-southeast-1.amazonaws.com', 'Z3O0J2DXBE1FTB'),
+    'ap-southeast-2': ('s3-website-ap-southeast-2.amazonaws.com', 'Z1WCIGYICN2BYD'),
+    'ap-northeast-1': ('s3-website-ap-northeast-1.amazonaws.com', 'Z2M4EHUR26P7ZW'),
+    'sa-east-1': ('s3-website-sa-east-1.amazonaws.com', 'Z7KQH4QJS55SO'),
+    'us-gov-west-1': ('s3-website-us-gov-west-1.amazonaws.com', 'Z31GFT0UA1I2HV')
+}
 
 aws = None
 
@@ -755,3 +776,110 @@ def go1(app_name, env_name):
 
     print '-----> DONE!'
 
+def deploy_static(app_name, env_name, domain, force):
+    app = App(env_name=env_name,
+              repo=Repo(name=app_name,
+                        remote_url=get_app_config(app_name)['remote_url'],
+                        remote_branch=get_app_config(app_name).get('remote_branch'),
+                        local_branch=get_app_config(app_name).get('local_branch')))
+    bucket_name = domain
+
+    app.repo.fetch()
+
+    version = app.repo.head_commit_id()
+
+    s3 = boto.connect_s3()
+    b = s3.lookup(bucket_name)
+
+    if b is not None:
+        version_key = b.get_key('__VERSION__')
+        if version_key is not None:
+            current_version = version_key.get_metadata('git-version')
+            if version == current_version:
+                if force:
+                    print '-----> Version {} already deployed, but re-deploying anyway'.format(version)
+                else:
+                    print '-----> Version {} already deployed!'.format(version)
+                    return
+
+    print '-----> Deploying static website {} to S3 bucket {}'.format(app.name, bucket_name)
+
+    if b is None:
+        print '-----> Creating bucket {}'.format(bucket_name)
+        b = s3.create_bucket(bucket_name)
+
+    # TODO: this policy allows all users read access to all objects.
+    # Need to find a way to limit access to __VERSION__ to only authenticated
+    # users.
+    public_access_policy = json.dumps({"Version":"2012-10-17",
+                                       "Statement":[{"Sid":"PublicReadForGetBucketObjects",
+                                                     "Effect":"Allow",
+                                                     "Principal": "*",
+                                                     "Action":["s3:GetObject"],
+                                                     "Resource":["arn:aws:s3:::{}/*".format(bucket_name)]}]})
+    b.set_policy(public_access_policy)
+    b.configure_website(suffix="index.html", error_key="error.html")
+
+    def map_key_to_obj(m, obj):
+        if obj.key != '__VERSION__':
+            m[obj.key] = obj
+        return m
+    existing_keys = reduce(map_key_to_obj, b.get_all_keys(), {})
+
+    root = app.repo.path
+    print '-----> Uploading {} to {} bucket'.format(root, bucket_name)
+    new_keys = []
+    updated_keys = []
+    for dirname, dirnames, filenames in walk(root):
+        reldirname = relpath(dirname, root)
+        reldirname = '' if reldirname == '.' else reldirname
+        for filename in filenames:
+            full_filename = join(reldirname, filename)
+            new_or_update = '        '
+            if existing_keys.has_key(full_filename):
+                new_or_update = '[UPDATE]'
+                updated_keys.append(full_filename)
+                key = existing_keys.pop(full_filename)
+            else:
+                new_or_update = '[NEW]   '
+                new_keys.append(full_filename)
+                key = b.new_key(full_filename)
+            # print '       {} Uploading {}'.format(new_or_update, full_filename)
+            key.set_contents_from_filename(join(dirname, filename))
+    if len(existing_keys) > 0:
+        print '-----> WARNING: the following files are still present but no'
+        print '       longer part of the website:'
+        for k,v in existing_keys.iteritems():
+            print '       {}'.format(k)
+
+    print '-----> Tagging bucket with git version'
+    version_key = b.get_key('__VERSION__')
+    if version_key:
+        version_key.delete()
+    version_key = b.new_key('__VERSION__')
+    version_key.set_metadata('git-version', version)
+    version_key.set_contents_from_string('')
+
+    print '=====> Deployed to {}!'.format(b.get_website_endpoint())
+
+    ec2 = boto.connect_ec2()
+    region_name = first([z.region.name for z in ec2.get_all_zones() if z.name == availability_zone])
+    s3_website_region = s3_website_regions[region_name]
+
+    route53 = boto.connect_route53()
+    zone_name = "{}.".format(get_tld("http://{}".format(domain)))
+    zone = route53.get_zone(zone_name)
+    if zone is None:
+        raise Exception("Cannot find zone {}".format(zone_name))
+    a_record = zone.get_a("{}.".format(domain))
+    if not a_record:
+        print '-----> Creating ALIAS for {} to S3'.format(domain)
+        changes = ResourceRecordSets(route53, zone.id)
+        change_a = changes.add_change('CREATE', domain, 'A')
+        change_a.set_alias(alias_hosted_zone_id=s3_website_region[1], alias_dns_name=s3_website_region[0])
+        changes.commit()
+    else:
+        print '-----> ALIAS for {} to S3 already exists'.format(domain)
+        print '       {}'.format(a_record)
+
+    print '=====> DONE!'
