@@ -1,6 +1,6 @@
 import sys
 from os import walk
-from os.path import join, isdir, expanduser, relpath
+from os.path import join, isdir, expanduser, relpath, normpath
 from operator import itemgetter
 import datetime
 import time
@@ -833,7 +833,11 @@ def deploy_static(app_name, env_name, domain, force):
                     print '-----> Version {} already deployed!'.format(version)
                     return
 
-    print '-----> Deploying static website {} to S3 bucket {}'.format(app.name, bucket_name)
+    with lcd(app.repo.path):
+        build_cmd = app.config.get('build_script')
+        if build_cmd:
+            print '-----> Building'
+            local(build_cmd)
 
     if b is None:
         print '-----> Creating bucket {}'.format(bucket_name)
@@ -857,7 +861,8 @@ def deploy_static(app_name, env_name, domain, force):
         return m
     existing_keys = reduce(map_key_to_obj, b.get_all_keys(), {})
 
-    root = app.repo.path
+    root = normpath(join(app.repo.path, app.config.get('root_dir', '')))
+
     print '-----> Uploading {} to {} bucket'.format(root, bucket_name)
     new_keys = []
     updated_keys = []

@@ -9,7 +9,9 @@
       "redirects": {
         "key1": "key2",
         "key3": "http://www.domain.com"
-      }
+      },
+      "root_dir": "build",
+      "build_script": "npm install && grunt"
     }
   },
   "deploy_remote_name": "infra-deploy",
