@@ -32,15 +32,15 @@ fabric.state.output.everything = False
 
 # http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_website_region_endpoints
 s3_website_regions = {
-    'us-east-1': ('s3-website-us-east-1.amazonaws.com', 'Z3AQBSTGFYJSTF'),
-    'us-west-2': ('s3-website-us-west-2.amazonaws.com', 'Z3BJ6K6RIION7M'),
-    'us-west-1': ('s3-website-us-west-1.amazonaws.com', 'Z2F56UZL2M1ACD'),
-    'eu-west-1': ('s3-website-eu-west-1.amazonaws.com', 'Z1BKCTXD74EZPE'),
-    'ap-southeast-1': ('s3-website-ap-southeast-1.amazonaws.com', 'Z3O0J2DXBE1FTB'),
-    'ap-southeast-2': ('s3-website-ap-southeast-2.amazonaws.com', 'Z1WCIGYICN2BYD'),
-    'ap-northeast-1': ('s3-website-ap-northeast-1.amazonaws.com', 'Z2M4EHUR26P7ZW'),
-    'sa-east-1': ('s3-website-sa-east-1.amazonaws.com', 'Z7KQH4QJS55SO'),
-    'us-gov-west-1': ('s3-website-us-gov-west-1.amazonaws.com', 'Z31GFT0UA1I2HV')
+    'us-east-1': ('s3-website-us-east-1.amazonaws.com.', 'Z3AQBSTGFYJSTF'),
+    'us-west-2': ('s3-website-us-west-2.amazonaws.com.', 'Z3BJ6K6RIION7M'),
+    'us-west-1': ('s3-website-us-west-1.amazonaws.com.', 'Z2F56UZL2M1ACD'),
+    'eu-west-1': ('s3-website-eu-west-1.amazonaws.com.', 'Z1BKCTXD74EZPE'),
+    'ap-southeast-1': ('s3-website-ap-southeast-1.amazonaws.com.', 'Z3O0J2DXBE1FTB'),
+    'ap-southeast-2': ('s3-website-ap-southeast-2.amazonaws.com.', 'Z1WCIGYICN2BYD'),
+    'ap-northeast-1': ('s3-website-ap-northeast-1.amazonaws.com.', 'Z2M4EHUR26P7ZW'),
+    'sa-east-1': ('s3-website-sa-east-1.amazonaws.com.', 'Z7KQH4QJS55SO'),
+    'us-gov-west-1': ('s3-website-us-gov-west-1.amazonaws.com.', 'Z31GFT0UA1I2HV')
 }
 
 aws = None
@@ -931,15 +931,25 @@ def deploy_static(app_name, env_name, domain, force):
     zone = route53.get_zone(zone_name)
     if zone is None:
         raise Exception("Cannot find zone {}".format(zone_name))
-    a_record = zone.get_a("{}.".format(domain))
+    full_domain = "{}.".format(domain)
+    a_record = zone.get_a(full_domain)
     if not a_record:
-        print '-----> Creating ALIAS for {} to S3'.format(domain)
+        print '-----> Creating ALIAS for {} to S3'.format(full_domain)
         changes = ResourceRecordSets(route53, zone.id)
-        change_a = changes.add_change('CREATE', domain, 'A')
+        change_a = changes.add_change('CREATE', full_domain, 'A')
         change_a.set_alias(alias_hosted_zone_id=s3_website_region[1], alias_dns_name=s3_website_region[0])
         changes.commit()
     else:
-        print '-----> ALIAS for {} to S3 already exists'.format(domain)
+        print '-----> ALIAS for {} to S3 already exists'.format(full_domain)
         print '       {}'.format(a_record)
+        if a_record.alias_dns_name != s3_website_region[0]:
+            print '       WARNING: Alias DNS name is {}, but should be {}'.format(a_record.alias_dns_name, s3_website_region[0])
+        if a_record.alias_hosted_zone_id != s3_website_region[1]:
+            print '       WARNING: Alias hosted zone ID is {}, but should be {}'.format(a_record.alias_hosted_zone_id, s3_website_region[1])
+        if a_record.name != full_domain:
+            print '       WARNING: Domain is {}, but should be {}'.format(a_record.name, full_domain)
+        if a_record.type != 'A':
+            print '       WARNING: Record type is {}, but should be {}'.format(a_record.type, 'A')
+
 
     print '=====> DONE!'
