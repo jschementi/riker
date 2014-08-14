@@ -36,6 +36,8 @@ def main(arguments):
                 deploy_static(arguments)
             else:
                 deploy(arguments)
+        if arguments.get('update-config') == True:
+            update_config(arguments)
     finally:
         disconnect_all()
 
@@ -48,6 +50,10 @@ def create_new_ami(arguments):
 
 def deploy_ami(arguments):
     api.deploy_latest_app_ami(arguments['--app'], arguments['--env'])
+
+def update_config(arguments):
+    api.deploy_config_update(arguments['--app'], arguments['--env'])
+    deploy_ami(arguments)
 
 def deploy_static(arguments):
     domain = arguments.get('--domain')

@@ -277,6 +277,12 @@ class AppInstance(CachedObject):
         hosts = get_public_dns(instances)
         execute(self.deploy(), hosts=hosts)
 
+    def update_instances_config(self, instances):
+        print '-----> Updating config of {} to instances {}'.format(self.app.name, instances)
+        ensure_running(instances)
+        hosts = get_public_dns(instances)
+        execute(update_config, self.app.repo.name, self.app.env_name, hosts=hosts)
+
     def deploy(self):
         @task
         def _deploy():
@@ -586,6 +592,36 @@ def create_app_ami(app_name, env_name):
 
     print '-----> DONE: {} images ready'.format(app_images)
 
+def deploy_config_update(app_name, env_name):
+    global aws
+    aws = AWS(key_pair_name=config['instance_key_pair_name'],
+              vpc_id=vpc_id,
+              availability_zone=availability_zone,
+              subnet_id=subnet_id,
+              security_groups=SECURITY_GROUPS,
+              base_image=os_image_id,
+              instance_type=instance_type)
+    aws.connect()
+    aws.setup()
+    env.key_filename = get_pem_filename(instance_key_pair_name)
+    os_image = aws.conn.get_image(os_image_id)
+    group_ids=aws.get_security_group_ids()
+    app = App(env_name=env_name,
+              repo=Repo(name=app_name,
+                        remote_url=get_app_config(app_name)['remote_url'],
+                        remote_branch=get_app_config(app_name).get('remote_branch'),
+                        local_branch=get_app_config(app_name).get('local_branch')))
+    base_image = BaseImage(name=container_template_name, base_instance=BaseInstance(name=container_template_name, image=os_image, group_ids=group_ids)).get_or_create()
+    existing_app_image = LatestAppImage(app).get()
+    if not existing_app_image:
+        raise Exception("Need previous deployment to update config!")
+    app_inst = AppInstance(app=app, image=existing_app_image or base_image, group_ids=group_ids)
+    app_instances = app_inst.get_or_create()
+    app_inst.update_instances_config(app_instances)
+    app_img = AppImage(app=app, instances=app_instances)
+    app_images = app_img.get_or_create()
+    terminate_instances([inst.id for inst in app_instances])
+    print '-----> DONE: {} images ready'.format(app_images)
 
 def deploy_latest_app_ami(app_name, env_name):
 
