@@ -133,11 +133,20 @@ class AWS(object):
 
 class Repo(object):
 
-    def __init__(self, name, remote_url, remote_branch, local_branch):
+    def __init__(self, name, remote_url=None, remote_branch=None, local_branch=None):
         self.remote_url = remote_url
         self.remote_branch = remote_branch
         self.local_branch = local_branch
         self.name = name
+        self.app_config = apps[name]
+
+        self.set_prop_from_app_config('remote_url')
+        self.set_prop_from_app_config('remote_branch')
+        self.set_prop_from_app_config('local_branch')
+
+    def set_prop_from_app_config(self, prop):
+        if getattr(self, prop) is None:
+            setattr(self, prop, self.app_config.get(prop))
 
     @property
     def path(self):
@@ -169,13 +178,17 @@ class Repo(object):
 
 class App(object):
 
-    def __init__(self, env_name, repo):
+    def __init__(self, env_name, app_name):
         self.env_name = env_name
-        self.repo = repo
+        self.repo = Repo(app_name)
 
     @property
     def name(self):
         return '{}/{}'.format(self.env_name, self.repo.name)
+
+    @property
+    def config(self):
+        return self.repo.app_config
 
 class CachedObject(object):
 
@@ -494,9 +507,6 @@ SECURITY_GROUPS = [(name, [boto_helpers.SecurityGroupRule(*rule)
                            for rule in rules])
                    for name, rules in config['security_groups'].iteritems()]
 
-def get_app_config(app):
-    return apps[app]
-
 def get_pem_filename(name):
     return expanduser(join('~/.infra', '{}.pem'.format(name)))
 
@@ -558,11 +568,7 @@ def create_app_ami(app_name, env_name):
 
     group_ids=aws.get_security_group_ids()
 
-    app = App(env_name=env_name,
-              repo=Repo(name=app_name,
-                        remote_url=get_app_config(app_name)['remote_url'],
-                        remote_branch=get_app_config(app_name).get('remote_branch'),
-                        local_branch=get_app_config(app_name).get('local_branch')))
+    app = App(env_name, app_name)
 
     base_image = BaseImage(name=container_template_name,
                            base_instance=BaseInstance(name=container_template_name,
@@ -606,11 +612,7 @@ def deploy_config_update(app_name, env_name):
     env.key_filename = get_pem_filename(instance_key_pair_name)
     os_image = aws.conn.get_image(os_image_id)
     group_ids=aws.get_security_group_ids()
-    app = App(env_name=env_name,
-              repo=Repo(name=app_name,
-                        remote_url=get_app_config(app_name)['remote_url'],
-                        remote_branch=get_app_config(app_name).get('remote_branch'),
-                        local_branch=get_app_config(app_name).get('local_branch')))
+    app = App(env_name, app_name)
     base_image = BaseImage(name=container_template_name, base_instance=BaseInstance(name=container_template_name, image=os_image, group_ids=group_ids)).get_or_create()
     existing_app_image = LatestAppImage(app).get()
     if not existing_app_image:
@@ -638,13 +640,9 @@ def deploy_latest_app_ami(app_name, env_name):
 
     group_ids=aws.get_security_group_ids()
 
-    health_check_target = get_app_config(app_name).get('health_check', 'TCP:80')
+    app = App(env_name, app_name)
 
-    app = App(env_name=env_name,
-              repo=Repo(name=app_name,
-                        remote_url=get_app_config(app_name)['remote_url'],
-                        remote_branch=get_app_config(app_name).get('remote_branch'),
-                        local_branch=get_app_config(app_name).get('local_branch')))
+    health_check_target = app.config.get('health_check', 'TCP:80')
 
     name = re.sub('[^A-Za-z0-9\-]', '-', app.name)
 
@@ -814,11 +812,7 @@ def deploy_latest_app_ami(app_name, env_name):
     print '-----> DONE!'
 
 def deploy_static(app_name, env_name, domain, force):
-    app = App(env_name=env_name,
-              repo=Repo(name=app_name,
-                        remote_url=get_app_config(app_name)['remote_url'],
-                        remote_branch=get_app_config(app_name).get('remote_branch'),
-                        local_branch=get_app_config(app_name).get('local_branch')))
+    app = App(env_name, app_name)
     bucket_name = domain
 
     app.repo.fetch()
@@ -898,8 +892,7 @@ def deploy_static(app_name, env_name, domain, force):
     version_key.set_contents_from_string('')
 
     print '-----> Setting up redirects'
-    import pdb; pdb.set_trace()
-    app_redirects = get_app_config(app_name).get('redirects', {})
+    app_redirects = app.config.get('redirects', {})
     if len(app_redirects) == 0:
         print '       No redirects.'
     else:
