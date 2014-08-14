@@ -884,7 +884,7 @@ def deploy_static(app_name, env_name, domain, force):
                 new_or_update = '[NEW]   '
                 new_keys.append(full_filename)
                 key = b.new_key(full_filename)
-            # print '       {} Uploading {}'.format(new_or_update, full_filename)
+            print '       {} Uploading {}'.format(new_or_update, full_filename)
             key.set_contents_from_filename(join(dirname, filename))
     if len(existing_keys) > 0:
         print '-----> WARNING: the following files are still present but no'
@@ -892,7 +892,7 @@ def deploy_static(app_name, env_name, domain, force):
         for k,v in existing_keys.iteritems():
             print '       {}'.format(k)
 
-    print '-----> Tagging bucket with git version'
+    print '-----> Tagging bucket with git version {}'.format(version)
     version_key = b.get_key('__VERSION__')
     if version_key:
         version_key.delete()
