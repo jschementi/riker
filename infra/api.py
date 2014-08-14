@@ -530,7 +530,7 @@ def logs(app, tail='no'):
 def ps():
     sudo('docker ps')
 
-def go(app_name, env_name):
+def create_app_ami(app_name, env_name):
 
     global aws
     aws = AWS(key_pair_name=config['instance_key_pair_name'],
@@ -586,7 +586,7 @@ def go(app_name, env_name):
     print '-----> DONE: {} images ready'.format(app_images)
 
 
-def go1(app_name, env_name):
+def deploy_latest_app_ami(app_name, env_name):
 
     global aws
     aws = AWS(key_pair_name=config['instance_key_pair_name'],

@@ -44,10 +44,10 @@ def deploy(arguments):
     deploy_ami(arguments)
 
 def create_new_ami(arguments):
-    api.go(arguments['--app'], arguments['--env'])
+    api.create_app_ami(arguments['--app'], arguments['--env'])
 
 def deploy_ami(arguments):
-    api.go1(arguments['--app'], arguments['--env'])
+    api.deploy_latest_app_ami(arguments['--app'], arguments['--env'])
 
 def deploy_static(arguments):
     domain = arguments.get('--domain')
