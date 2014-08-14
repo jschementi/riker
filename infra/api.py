@@ -20,6 +20,7 @@ from fabric.contrib.files import exists, append, sed
 from fabric.operations import reboot
 import giturlparse
 from tld import get_tld
+import pybars
 
 import git_helpers as git
 import boto_helpers
@@ -859,6 +860,31 @@ def deploy_static(app_name, env_name, domain, force):
     version_key = b.new_key('__VERSION__')
     version_key.set_metadata('git-version', version)
     version_key.set_contents_from_string('')
+
+    print '-----> Setting up redirects'
+    import pdb; pdb.set_trace()
+    app_redirects = get_app_config(app_name).get('redirects', {})
+    if len(app_redirects) == 0:
+        print '       No redirects.'
+    else:
+        def get_or_new_key(bucket, name):
+            key = bucket.get_key(name)
+            if key is not None:
+                key.delete()
+            return bucket.new_key(name)
+        elb = boto.connect_elb()
+        pybars_compiler = pybars.Compiler()
+        for key_name, redirect_source in app_redirects.iteritems():
+            redirect_template = pybars_compiler.compile(redirect_source)
+            app_redirects[key_name] = redirect_template
+        data = {
+            'webui_dns': elb.get_all_load_balancers(load_balancer_names=['{}-web-ui'.format(env_name)])[0].dns_name
+        }
+        for key_name, redirect_template in app_redirects.iteritems():
+            k = get_or_new_key(b, key_name)
+            redirect = unicode(redirect_template(data))
+            print '       Redirect {} to {}'.format(key_name, redirect)
+            k.set_redirect(redirect)
 
     print '=====> Deployed to {}!'.format(b.get_website_endpoint())
 
