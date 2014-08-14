@@ -863,6 +863,10 @@ def deploy_static(app_name, env_name, domain, force):
 
     root = normpath(join(app.repo.path, app.config.get('root_dir', '')))
 
+    app_redirects = app.config.get('redirects', {})
+    for key_name in app_redirects.keys():
+        existing_keys.pop(key_name, None)
+
     print '-----> Uploading {} to {} bucket'.format(root, bucket_name)
     new_keys = []
     updated_keys = []
@@ -950,6 +954,5 @@ def deploy_static(app_name, env_name, domain, force):
             print '       WARNING: Domain is {}, but should be {}'.format(a_record.name, full_domain)
         if a_record.type != 'A':
             print '       WARNING: Record type is {}, but should be {}'.format(a_record.type, 'A')
-
 
     print '=====> DONE!'
