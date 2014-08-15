@@ -956,3 +956,38 @@ def deploy_static(app_name, env_name, domain, force):
             print '       WARNING: Record type is {}, but should be {}'.format(a_record.type, 'A')
 
     print '=====> DONE!'
+
+def get_ssh_command(inst_id):
+    ec2 = boto.connect_ec2()
+    instance = ec2.get_only_instances(instance_ids=[inst_id])[0]
+    pem_filename = get_pem_filename(instance_key_pair_name)
+    return 'ssh -i {} {}@{}'.format(pem_filename, config['instance_user'], instance.public_dns_name)
+
+def get_info(app_name, env_name):
+    ec2 = boto.connect_ec2()
+    elb = boto.connect_elb()
+    lb = None
+    try:
+        lbresult = elb.get_all_load_balancers(load_balancer_names=['{}-{}'.format(env_name, app_name)])
+        lb = lbresult[0] if len(lbresult) > 0 else None
+    except boto.exception.BotoServerError:
+        pass
+    if lb is None:
+        print 'No deployment found'
+        sys.exit(1)
+    print '-----> Load Balancer'
+    print '       Name: {}'.format(lb.name)
+    print '       DNS:  {}'.format(lb.dns_name)
+    i = 0
+    for inst in lb.get_instance_health():
+        i += 1
+        print '-----> Instance #{}'.format(i)
+        inst_id = inst.instance_id
+        print '       ID:    {}'.format(inst_id)
+        print '       State: {}'.format(inst.state)
+        instance = ec2.get_only_instances(instance_ids=[inst_id])[0]
+        print '       DNS:   {}'.format(instance.public_dns_name)
+        print '       SSH:   {}'.format(get_ssh_command(inst_id))
+    if i == 0:
+        print '-----> Instances'
+        print '       None'

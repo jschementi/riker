@@ -5,6 +5,7 @@ Usage:
   infra create-new-ami --app <app-name> --env <env-name>
   infra deploy-ami --app <app-name> --env <env-name>
   infra update-config --app <app-name> --env <env-name>
+  infra get-info --app <app-name> --env <env-name>
   infra (-h | --help)
   infra --version
 
@@ -38,6 +39,8 @@ def main(arguments):
                 deploy(arguments)
         if arguments.get('update-config') == True:
             update_config(arguments)
+        if arguments.get('get-info') == True:
+            get_info(arguments)
     finally:
         disconnect_all()
 
@@ -61,6 +64,9 @@ def deploy_static(arguments):
         raise Exception("Must provide --domain <domain-name>")
     force = arguments.get('--force')
     api.deploy_static(arguments['--app'], arguments['--env'], domain, force)
+
+def get_info(arguments):
+    api.get_info(arguments['--app'], arguments['--env'])
 
 if __name__ == '__main__':
     arguments = docopt(__doc__, version='Infra 1.0')
