@@ -963,6 +963,17 @@ def get_ssh_command(inst_id):
     pem_filename = get_pem_filename(instance_key_pair_name)
     return 'ssh -i {} {}@{}'.format(pem_filename, config['instance_user'], instance.public_dns_name)
 
+def get_dokku_command(inst_id, cmd):
+    ec2 = boto.connect_ec2()
+    instance = ec2.get_only_instances(instance_ids=[inst_id])[0]
+    return 'ssh {}@{} {}'.format(DEPLOY_USER, instance.public_dns_name, cmd)
+
+def do_ssh(inst_id):
+    local(get_ssh_command(inst_id))
+
+def dokku(inst_id, cmd):
+    local(get_dokku_command(inst_id, cmd))
+
 def get_info(app_name, env_name):
     ec2 = boto.connect_ec2()
     elb = boto.connect_elb()

@@ -6,6 +6,8 @@ Usage:
   infra deploy-ami --app <app-name> --env <env-name>
   infra update-config --app <app-name> --env <env-name>
   infra get-info --app <app-name> --env <env-name>
+  infra ssh --instance-id <instance-id>
+  infra dokku --instance-id <instance-id> <cmd>...
   infra (-h | --help)
   infra --version
 
@@ -14,6 +16,7 @@ Options:
   -e <env>, --env <env>           Environment for app.
   -s, --static                    App is static.
   -d <domain>, --domain <domain>  Domain for app.
+  --instance-id <instance-id>     EC2 Instance ID.
   -f, --force                     Force deployment.
   -h --help                       Show this screen.
   --version                       Show version.
@@ -41,6 +44,10 @@ def main(arguments):
             update_config(arguments)
         if arguments.get('get-info') == True:
             get_info(arguments)
+        if arguments.get('ssh') == True:
+            ssh(arguments)
+        if arguments.get('dokku') == True:
+            dokku(arguments)
     finally:
         disconnect_all()
 
@@ -67,6 +74,13 @@ def deploy_static(arguments):
 
 def get_info(arguments):
     api.get_info(arguments['--app'], arguments['--env'])
+
+def ssh(arguments):
+    api.do_ssh(arguments['--instance-id'])
+
+def dokku(arguments):
+    cmd = ' '.join(arguments.get('<cmd>', ''))
+    api.dokku(arguments['--instance-id'], cmd)
 
 if __name__ == '__main__':
     arguments = docopt(__doc__, version='Infra 1.0')
