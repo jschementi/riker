@@ -20,7 +20,6 @@
   "instance_type": "t2.micro",
   "instance_key_pair_name": "my-keypair",
   "base_instance_name": "base-instance-1",
-  "environments": ["dev", "stage", "prod"],
   "vpc_id": "vpc-12345678",
   "availability_zone": "us-east-1a",
   "subnet_id": "subnet-12345678",

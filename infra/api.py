@@ -547,6 +547,50 @@ def logs(app, tail='no'):
 def ps():
     sudo('docker ps')
 
+def deploy_to_single_instance(app_name, env_name):
+    global aws
+    aws = AWS(key_pair_name=config['instance_key_pair_name'],
+              vpc_id=vpc_id,
+              availability_zone=availability_zone,
+              subnet_id=subnet_id,
+              security_groups=SECURITY_GROUPS,
+              base_image=os_image_id,
+              instance_type=instance_type)
+
+    aws.connect()
+
+    aws.setup()
+
+    env.key_filename = get_pem_filename(instance_key_pair_name)
+
+    os_image = aws.conn.get_image(os_image_id)
+
+    group_ids=aws.get_security_group_ids()
+
+    app = App(env_name, app_name)
+
+    app.repo.fetch()
+
+    instances = aws.conn.get_only_instances(filters={'tag:Name': app.name,
+                                                     'tag:deployed': 'true',
+                                                     'instance-state-name': 'running'})
+    instance_ids = [inst.id for inst in instances]
+    if len(instances) == 0:
+        reservation = aws.run_instance(group_ids, os_image.id)
+        instances = reservation.instances
+        instance_ids = [inst.id for inst in instances]
+        aws.create_tags(instance_ids, {
+            'Name': app.name,
+            'deployed': 'false'
+        })
+        bi = BaseInstance(None, None, None)
+        bi.provision_instances(instances)
+
+    ai = AppInstance(app, None, None)
+    ai.deploy_instances(instances)
+
+    print '=====> DONE!'
+
 def create_app_ami(app_name, env_name):
 
     global aws
@@ -984,8 +1028,18 @@ def get_info(app_name, env_name):
     except boto.exception.BotoServerError:
         pass
     if lb is None:
-        print 'No deployment found'
-        sys.exit(1)
+        instances = ec2.get_only_instances(filters={'tag:Name': '{}/{}'.format(env_name, app_name),
+                                                    'tag:deployed': 'true',
+                                                    'instance-state-name': 'running'})
+        if len(instances) > 0:
+            for instance in instances:
+                print '-----> Instance {}'.format(instance.id)
+                print '       DNS:   {}'.format(instance.public_dns_name)
+                print '       SSH:   {}'.format(get_ssh_command(instance.id))
+            return
+        else:
+            print 'No deployment found'
+            sys.exit(1)
     print '-----> Load Balancer'
     print '       Name: {}'.format(lb.name)
     print '       DNS:  {}'.format(lb.dns_name)

@@ -1,7 +1,7 @@
 """Heroku-like deployments with AWS
 
 Usage:
-  infra deploy --app <app-name> --env <env-name> [--static --domain <domain-name>] [--force]
+  infra deploy --app <app-name> --env <env-name> [--single] [--static --domain <domain-name>] [--force]
   infra create-new-ami --app <app-name> --env <env-name>
   infra deploy-ami --app <app-name> --env <env-name>
   infra update-config --app <app-name> --env <env-name>
@@ -17,6 +17,7 @@ Options:
   -s, --static                    App is static.
   -d <domain>, --domain <domain>  Domain for app.
   --instance-id <instance-id>     EC2 Instance ID.
+  --single                        Deploy to a single instance.
   -f, --force                     Force deployment.
   -h --help                       Show this screen.
   --version                       Show version.
@@ -38,6 +39,8 @@ def main(arguments):
         if arguments.get('deploy') == True:
             if arguments.get('--static') == True:
                 deploy_static(arguments)
+            elif arguments.get('--single') == True:
+                deploy_to_single_instance(arguments)
             else:
                 deploy(arguments)
         if arguments.get('update-config') == True:
@@ -71,6 +74,9 @@ def deploy_static(arguments):
         raise Exception("Must provide --domain <domain-name>")
     force = arguments.get('--force')
     api.deploy_static(arguments['--app'], arguments['--env'], domain, force)
+
+def deploy_to_single_instance(arguments):
+    api.deploy_to_single_instance(arguments['--app'], arguments['--env'])
 
 def get_info(arguments):
     api.get_info(arguments['--app'], arguments['--env'])
