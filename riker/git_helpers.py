@@ -14,7 +14,7 @@ def push_repo(remote_name='origin', branch_name='master', local_branch_name=None
 def clone_repo(remote_url, repo_dir):
     local('git clone %s %s' % (remote_url, repo_dir))
 
-@synchronize('~/.infra/ensure_remote.lock')
+@synchronize('ensure_remote.lock')
 def ensure_remote(remote_name, remote_url):
     remotes = [l.strip() for l in local('git remote', capture=True).split("\n")]
     if remote_name in remotes:

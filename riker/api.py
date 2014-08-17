@@ -14,7 +14,7 @@ from boto.ec2.elb import HealthCheck
 from boto.ec2.autoscale import LaunchConfiguration
 from boto.ec2.autoscale import AutoScalingGroup
 from boto.ec2.elb.attributes import ConnectionDrainingAttribute
-import fabric
+#import fabric
 from fabric.api import task, run, local, env, sudo, lcd, execute, put
 from fabric.contrib.files import exists, append, sed
 from fabric.operations import reboot
@@ -24,11 +24,11 @@ import pybars
 
 import git_helpers as git
 import boto_helpers
-from config import load_config
+from config import load_config, config_dir
 from utils import poll_for_condition, log, first
 from retry import synchronize
 
-fabric.state.output.everything = False
+# fabric.state.output.everything = False
 
 # http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_website_region_endpoints
 s3_website_regions = {
@@ -150,9 +150,9 @@ class Repo(object):
 
     @property
     def path(self):
-        return expanduser(join('~/.infra/apps', self.name))
+        return expanduser(join(config_dir, self.name))
 
-    @synchronize('~/.infra/repo_fetch.lock')
+    @synchronize('repo_fetch.lock')
     def fetch(self):
         log('info', 'Fetching app {} from {}'.format(self.name, self.remote_url), show_header=True)
         git_remote_host = giturlparse.parse(self.remote_url).host
@@ -411,7 +411,7 @@ class BaseInstance(CachedObject):
             })
         return _provision
 
-    # @synchronize('~/.infra/add_swap_space.lock', is_remote=True)
+    # @synchronize('add_swap_space.lock', is_remote=True)
     def add_swap_space(self):
         # t2.micro instances only have 512MB RAM, so compensate with swap space.
         log('info', 'Creating swap', show_header=True)
@@ -426,7 +426,7 @@ class BaseInstance(CachedObject):
         append('/etc/fstab', '/extraswap swap swap defaults 0 0', use_sudo=True)
         sudo('swapon -a')
 
-    # @synchronize('~/.infra/install_docker.lock', is_remote=True)
+    # @synchronize('install_docker.lock', is_remote=True)
     def install_docker(self):
         """
         http://docs.docker.com/installation/ubuntulinux/#ubuntu-trusty-1404-lts-64-bit
@@ -435,7 +435,7 @@ class BaseInstance(CachedObject):
         run('curl -s https://get.docker.io/ubuntu/ > ~/docker_install.sh')
         sudo('sh ~/docker_install.sh; rm -f ~/docker_install.sh')
 
-    # @synchronize('~/.infra/install_dokku.lock', is_remote=True)
+    # @synchronize('install_dokku.lock', is_remote=True)
     def install_dokku(self):
         """
         https://github.com/progrium/dokku
@@ -452,7 +452,7 @@ class BaseInstance(CachedObject):
         sudo('git clone https://github.com/musicglue/dokku-user-env-compile.git /var/lib/dokku/plugins/user-env-compile')
         sudo('dokku plugins-install')
 
-    # @synchronize('~/.infra/install_mosh.lock', is_remote=True)
+    # @synchronize('install_mosh.lock', is_remote=True)
     def install_mosh(self):
         log('info', 'Installing mosh', show_header=True)
         sudo('apt-get install -y python-software-properties')
@@ -460,7 +460,7 @@ class BaseInstance(CachedObject):
         sudo('apt-get update -y')
         sudo('apt-get install -y mosh')
 
-    # @synchronize('~/.infra/configure_nginx.lock', is_remote=True)
+    # @synchronize('configure_nginx.lock', is_remote=True)
     def configure_nginx(self):
         log('info', 'Configuring nginx', show_header=True)
         # nginx default domain name cache size is 64 bytes per domain. This may be
@@ -470,7 +470,7 @@ class BaseInstance(CachedObject):
 class ssh(object):
 
     @staticmethod
-    @synchronize('~/.infra/add_to_known_hosts.lock')
+    @synchronize('add_to_known_hosts.lock')
     def add_to_known_hosts(host):
         ip = local('dig +short {}'.format(host), capture=True).strip()
         local('ssh-keyscan -H {} >> ~/.ssh/known_hosts'.format(host))
@@ -478,7 +478,7 @@ class ssh(object):
         local('ssh-keyscan -H {},{} >> ~/.ssh/known_hosts'.format(host, ip))
 
     @staticmethod
-    @synchronize('~/.infra/remove_from_known_hosts.lock')
+    @synchronize('remove_from_known_hosts.lock')
     def remove_from_known_hosts(host):
         ip = local('dig +short {}'.format(host), capture=True).strip()
         # http://serverfault.com/questions/132970/can-i-automatically-add-a-new-host-to-known-hosts
@@ -508,10 +508,10 @@ SECURITY_GROUPS = [(name, [boto_helpers.SecurityGroupRule(*rule)
                    for name, rules in config['security_groups'].iteritems()]
 
 def get_pem_filename(name):
-    return expanduser(join('~/.infra', '{}.pem'.format(name)))
+    return expanduser(join(config_dir, '{}.pem'.format(name)))
 
 def get_config_path(env_name):
-    return expanduser(join('~/.infra/envs', env_name))
+    return expanduser(join(config_dir, 'envs', env_name))
 
 def terminate_instances(instance_ids):
     log('info', 'Terminating instances: {}'.format(instance_ids), show_header=True)
@@ -897,6 +897,7 @@ def deploy_static(app_name, env_name, domain, force):
                                                      "Action":["s3:GetObject"],
                                                      "Resource":["arn:aws:s3:::{}/*".format(bucket_name)]}]})
     b.set_policy(public_access_policy)
+    #b.configure_versioning(versioning=False)
     b.configure_website(suffix="index.html", error_key="error.html")
 
     def map_key_to_obj(m, obj):
@@ -970,6 +971,9 @@ def deploy_static(app_name, env_name, domain, force):
 
     print '=====> Deployed to {}!'.format(b.get_website_endpoint())
 
+    # TODO: support redirection from www.<domain>
+    # b_www = 'www.{}'.format(bucket_name)
+
     ec2 = boto.connect_ec2()
     region_name = first([z.region.name for z in ec2.get_all_zones() if z.name == availability_zone])
     s3_website_region = s3_website_regions[region_name]
@@ -986,6 +990,8 @@ def deploy_static(app_name, env_name, domain, force):
         changes = ResourceRecordSets(route53, zone.id)
         change_a = changes.add_change('CREATE', full_domain, 'A')
         change_a.set_alias(alias_hosted_zone_id=s3_website_region[1], alias_dns_name=s3_website_region[0])
+        #change_cname = records.add_change('CREATE', 'www.' + full_domain, 'CNAME')
+        #change_cname.add_value(b_www.get_website_endpoint())
         changes.commit()
     else:
         print '-----> ALIAS for {} to S3 already exists'.format(full_domain)

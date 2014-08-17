@@ -1,15 +1,15 @@
 """Heroku-like deployments with AWS
 
 Usage:
-  infra deploy --app <app-name> --env <env-name> [--single] [--static --domain <domain-name>] [--force]
-  infra create-new-ami --app <app-name> --env <env-name>
-  infra deploy-ami --app <app-name> --env <env-name>
-  infra update-config --app <app-name> --env <env-name>
-  infra get-info --app <app-name> --env <env-name>
-  infra ssh --instance-id <instance-id>
-  infra dokku --instance-id <instance-id> <cmd>...
-  infra (-h | --help)
-  infra --version
+  riker deploy --app <app-name> --env <env-name> [--single] [--static --domain <domain-name>] [--force]
+  riker create-new-ami --app <app-name> --env <env-name>
+  riker deploy-ami --app <app-name> --env <env-name>
+  riker update-config --app <app-name> --env <env-name>
+  riker get-info --app <app-name> --env <env-name>
+  riker ssh --instance-id <instance-id>
+  riker dokku --instance-id <instance-id> <cmd>...
+  riker (-h | --help)
+  riker --version
 
 Options:
   -a <app>, --app <app>           Name of app.
@@ -89,5 +89,5 @@ def dokku(arguments):
     api.dokku(arguments['--instance-id'], cmd)
 
 if __name__ == '__main__':
-    arguments = docopt(__doc__, version='Infra 1.0')
+    arguments = docopt(__doc__, version='riker 1.0')
     main(arguments)

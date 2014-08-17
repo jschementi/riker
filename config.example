@@ -14,7 +14,7 @@
       "build_script": "npm install && grunt"
     }
   },
-  "deploy_remote_name": "infra-deploy",
+  "deploy_remote_name": "riker-deploy",
   "system_name": "my-system",
   "os_image_id": "ami-864d84ee",
   "instance_type": "t2.micro",
