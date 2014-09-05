@@ -150,7 +150,7 @@ class Repo(object):
 
     @property
     def path(self):
-        return expanduser(join(config_dir, self.name))
+        return expanduser(join(config_dir, 'apps', self.name))
 
     @synchronize('repo_fetch.lock')
     def fetch(self):
