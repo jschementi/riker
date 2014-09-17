@@ -4,7 +4,9 @@ from fabric.api import local
 
 from retry import synchronize
 
-def push_repo(remote_name='origin', branch_name='master', local_branch_name=None, auto_confirm=False, force=False):
+def push_repo(remote_name='origin', branch_name=None, local_branch_name=None, auto_confirm=False, force=False):
+    if branch_name is None:
+        branch_name = 'master'
     full_branch_name = branch_name if local_branch_name is None else '%s:%s' % (local_branch_name, branch_name)
     options = ' '
     if force:
@@ -12,7 +14,7 @@ def push_repo(remote_name='origin', branch_name='master', local_branch_name=None
     local('git push%s %s %s' % (options, remote_name, full_branch_name))
 
 def clone_repo(remote_url, repo_dir, local_branch=None):
-    branch_arg = "-b {}".format(local_branch) if local_branch is None else ''
+    branch_arg = "-b {}".format(local_branch) if local_branch is not None else ''
     local('git clone %s %s %s' % (branch_arg, remote_url, repo_dir))
 
 @synchronize('ensure_remote.lock')
