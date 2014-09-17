@@ -100,7 +100,9 @@ class AWS(object):
     def setup(self):
         log('info', 'Setting up AWS', show_header=True)
         boto_helpers.get_or_create_key_pair(self.conn, self.key_pair_name, get_pem_filename)
-        boto_helpers.ensure_security_groups(self.conn, self.security_groups, self.vpc_id)
+        boto_helpers.ensure_security_groups(self.conn,
+                                            self.security_groups.items(),
+                                            self.vpc_id)
 
     def run_instance(self, group_ids, ami=None):
         if ami is None:
@@ -124,11 +126,11 @@ class AWS(object):
         log('info', 'images: {}'.format(image_ids))
         return image_ids
 
-    def get_security_groups(self):
-        return [boto_helpers.get_security_group(self.conn, g[0]) for g in self.security_groups]
+    def get_security_group(self, name):
+        return boto_helpers.get_security_group(self.conn, name)
 
-    def get_security_group_ids(self):
-        return [group.id for group in self.get_security_groups()]
+    def get_security_group_id(self, name):
+        return self.get_security_group(name).id
 
 
 class Repo(object):
@@ -525,9 +527,13 @@ instance_key_pair_name = config['instance_key_pair_name']
 vpc_id = config['vpc_id']
 availability_zone = config['availability_zone']
 subnet_id = config['subnet_id']
-SECURITY_GROUPS = [(name, [boto_helpers.SecurityGroupRule(*rule)
-                           for rule in rules])
-                   for name, rules in config['security_groups'].iteritems()]
+def create_sgrs(memo, kvp):
+    name = kvp[0]
+    rules = kvp[1]
+    sgrs = [boto_helpers.SecurityGroupRule(*rule) for rule in rules]
+    memo[name] = sgrs
+    return memo
+SECURITY_GROUPS = reduce(create_sgrs, config['security_groups'].iteritems(), {})
 
 def get_pem_filename(name):
     return expanduser(join(config_dir, '{}.pem'.format(name)))
@@ -587,7 +593,7 @@ def deploy_to_single_instance(app_name, env_name):
 
     os_image = aws.conn.get_image(os_image_id)
 
-    group_ids=aws.get_security_group_ids()
+    group_ids=[aws.get_security_group_id('instance')]
 
     app = App(env_name, app_name)
 
@@ -632,7 +638,7 @@ def create_app_ami(app_name, env_name):
 
     os_image = aws.conn.get_image(os_image_id)
 
-    group_ids=aws.get_security_group_ids()
+    group_ids=[aws.get_security_group_id('instance')]
 
     app = App(env_name, app_name)
 
@@ -677,7 +683,7 @@ def deploy_config_update(app_name, env_name):
     aws.setup()
     env.key_filename = get_pem_filename(instance_key_pair_name)
     os_image = aws.conn.get_image(os_image_id)
-    group_ids=aws.get_security_group_ids()
+    group_ids=[aws.get_security_group_id('instance')]
     app = App(env_name, app_name)
     base_image = BaseImage(name=container_template_name, base_instance=BaseInstance(name=container_template_name, image=os_image, group_ids=group_ids)).get_or_create()
     existing_app_image = LatestAppImage(app).get()
@@ -704,7 +710,8 @@ def deploy_latest_app_ami(app_name, env_name):
 
     aws.connect()
 
-    group_ids=aws.get_security_group_ids()
+    lb_group_ids=[aws.get_security_group_id('load-balancer')]
+    inst_group_ids=[aws.get_security_group_id('instance')]
 
     app = App(env_name, app_name)
 
@@ -729,8 +736,8 @@ def deploy_latest_app_ami(app_name, env_name):
         lb = elb_conn.create_load_balancer(name=load_balancer_name,
                                            zones=None,
                                            complex_listeners=listeners,
-                                           security_groups=group_ids,
-                                           subnets=[aws.subnet_id])
+                                           security_groups=lb_group_ids,
+                                           subnets=[aws.public_subnet_id])
     hc = HealthCheck(target=health_check_target)
     lb.configure_health_check(hc)
     cda = ConnectionDrainingAttribute()
@@ -751,7 +758,7 @@ def deploy_latest_app_ami(app_name, env_name):
         lc = LaunchConfiguration(name=launch_config_name,
                                  image_id=app_image.id,
                                  key_name=aws.key_pair_name,
-                                 security_groups=group_ids,
+                                 security_groups=inst_group_ids,
                                  instance_type=aws.instance_type)
         as_conn.create_launch_configuration(lc)
     else:
