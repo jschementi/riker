@@ -156,7 +156,7 @@ class Repo(object):
 
     @synchronize('repo_fetch.lock')
     def fetch(self):
-        log('info', 'Fetching app {} from {}'.format(self.name, self.remote_url), show_header=True)
+        log('info', 'Fetching app {} from {} to {}'.format(self.name, self.remote_url, self.path), show_header=True)
         git_remote_host = giturlparse.parse(self.remote_url).host
         ssh.remove_from_known_hosts(git_remote_host)
         ssh.add_to_known_hosts(git_remote_host)
