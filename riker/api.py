@@ -741,7 +741,7 @@ def deploy_latest_app_ami(app_name, env_name):
                                            zones=None,
                                            complex_listeners=listeners,
                                            security_groups=lb_group_ids,
-                                           subnets=[aws.public_subnet_id])
+                                           subnets=[aws.subnet_id])
     hc = HealthCheck(target=health_check_target)
     lb.configure_health_check(hc)
     cda = ConnectionDrainingAttribute()
