@@ -5,10 +5,10 @@ import utils
 import fabric.api
 
 def get_or_create_key_pair(conn, name, get_pem_filename):
-    utils.log('info', 'ensuring key pair exists')
+    utils.log('info', 'Ensuring key pair exists', show_header=True)
     key_pair = conn.get_key_pair(name)
     if key_pair is None:
-        utils.log('info', 'not found: creating')
+        utils.log('info', 'Not found: creating')
         key_pair = create_key_pair(conn, name, get_pem_filename)
     return key_pair
 
@@ -29,7 +29,6 @@ def write_private_key_to_pem_file(key_pair, get_pem_filename):
     fabric.api.local('ssh-add %s' % (filename,))
 
 def ensure_security_groups(conn, security_groups, vpc_id):
-    utils.log('info', 'ensuring security groups are properly configured')
     groups = []
     for group_name, rules in security_groups:
         group = get_or_create_security_group(conn, group_name, vpc_id=vpc_id)
@@ -49,7 +48,7 @@ def get_or_create_security_group(c, group_name, description="", vpc_id=None):
     groups = [g for g in c.get_all_security_groups() if g.name == group_name]
     group = groups[0] if groups else None
     if not group:
-        print "Creating group '%s'..."%(group_name,)
+        print "-----> Creating group '%s'..."%(group_name,)
         group = c.create_security_group(group_name, "A group for %s"%(group_name,), vpc_id)
     return group
 
@@ -60,14 +59,14 @@ def modify_sg(c, group, rule, authorize=False, revoke=False):
         src_group = c.get_all_security_groups([rule.src_group_name,])[0]
 
     if authorize and not revoke:
-        print "Authorizing missing rule %s..."%(rule,)
+        print "       Authorizing missing rule %s..."%(rule,)
         group.authorize(ip_protocol=rule.ip_protocol,
                         from_port=rule.from_port,
                         to_port=rule.to_port,
                         cidr_ip=rule.cidr_ip,
                         src_group=src_group)
     elif not authorize and revoke:
-        print "Revoking unexpected rule %s..."%(rule,)
+        print "       Revoking unexpected rule %s..."%(rule,)
         group.revoke(ip_protocol=rule.ip_protocol,
                      from_port=rule.from_port,
                      to_port=rule.to_port,
@@ -88,10 +87,10 @@ def revoke(c, group, rule):
 def update_security_group(c, group, expected_rules):
     """
     """
-    print 'Updating group "%s"...'%(group.name,)
-    import pprint
-    print "Expected Rules:"
-    pprint.pprint(expected_rules)
+    print '-----> Updating group "%s"...'%(group.name,)
+    #import pprint
+    #print "Expected Rules:"
+    #pprint.pprint(expected_rules)
 
     current_rules = []
     for rule in group.rules:
@@ -113,8 +112,8 @@ def update_security_group(c, group, expected_rules):
         else:
             current_rules.append(current_rule)
 
-    print "Current Rules:"
-    pprint.pprint(current_rules)
+    #print "Current Rules:"
+    #pprint.pprint(current_rules)
 
     for rule in expected_rules:
         if rule not in current_rules:
