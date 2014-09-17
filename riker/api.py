@@ -320,28 +320,6 @@ class AppInstance(CachedObject):
             # this is OK since we're only deploying one app per server
             run('dokku domains:set {} "{}"'.format(repo_name, '~^(www\.)?(?<domain>.+)$'))
             update_config(repo_name, env_name)
-
-            # make nginx pass-through x-forwarded-* headers
-            nginx_transparent_forward = """map $http_x_forwarded_proto $real_scheme {
-  default $http_x_forwarded_proto;
-  ''      $scheme;
-}
-map $http_x_forwarded_for $real_remote_addr {
-  default $http_x_forwarded_for;
-  ''      $remote_addr;
-}
-map $http_x_forwarded_port $real_server_port {
-  default $http_x_forwarded_port;
-  ''      $server_port;
-}
-"""
-            sudo('rm -f /etc/nginx/conf.d/x-forwarded-passthru.conf')
-            append('/etc/nginx/conf.d/x-forwarded-passthru.conf', nginx_transparent_forward, use_sudo=True)
-            sed("/home/dokku/{}/nginx.conf".format(repo_name), 'X-Forwarded-Proto \$scheme', 'X-Forwarded-Proto \$real_scheme', use_sudo=True)
-            sed("/home/dokku/{}/nginx.conf".format(repo_name), 'X-Forwarded-For \$remote_addr', 'X-Forwarded-For \$real_remote_addr', use_sudo=True)
-            sed("/home/dokku/{}/nginx.conf".format(repo_name), 'X-Forwarded-Port \$server_port', 'X-Forwarded-Port \$real_server_port', use_sudo=True)
-            sudo('/etc/init.d/nginx restart')
-
             ssh.remove_from_known_hosts(env.host)
             instance_id = get_instance_id_from_server()
             aws.create_tags([instance_id], {
@@ -350,6 +328,11 @@ map $http_x_forwarded_port $real_server_port {
                 'timestamp': datetime.datetime.now().isoformat()
             })
         return _deploy
+
+def configure_nginx_xforwarded_passthru(name):
+    sed("/home/dokku/{}/nginx.conf".format(name), 'X-Forwarded-Proto \$scheme', 'X-Forwarded-Proto \$real_scheme', use_sudo=True)
+    sed("/home/dokku/{}/nginx.conf".format(name), 'X-Forwarded-For \$remote_addr', 'X-Forwarded-For \$real_remote_addr', use_sudo=True)
+    sed("/home/dokku/{}/nginx.conf".format(name), 'X-Forwarded-Port \$server_port', 'X-Forwarded-Port \$real_server_port', use_sudo=True)
 
 class BaseImage(CachedObject):
 
@@ -570,6 +553,25 @@ def update_config(app, env, clear='yes'):
     if clear == 'yes':
         sudo('truncate -s0 /home/{}/{}/ENV'.format(DEPLOY_USER, app), user=DEPLOY_USER)
     sudo('dokku config:set {} {}'.format(app, cfg), user=DEPLOY_USER)
+
+    # make nginx pass-through x-forwarded-* headers
+    nginx_transparent_forward = """map $http_x_forwarded_proto $real_scheme {
+  default $http_x_forwarded_proto;
+  ''      $scheme;
+}
+map $http_x_forwarded_for $real_remote_addr {
+  default $http_x_forwarded_for;
+  ''      $remote_addr;
+}
+map $http_x_forwarded_port $real_server_port {
+  default $http_x_forwarded_port;
+  ''      $server_port;
+}
+"""
+    sudo('rm -f /etc/nginx/conf.d/x-forwarded-passthru.conf')
+    append('/etc/nginx/conf.d/x-forwarded-passthru.conf', nginx_transparent_forward, use_sudo=True)
+    configure_nginx_xforwarded_passthru(app)
+    sudo('/etc/init.d/nginx restart')
 
 def logs(app, tail='no'):
     run('dokku logs {}{}'.format(app, ' -t' if tail == 'yes' else ''))
