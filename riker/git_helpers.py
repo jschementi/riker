@@ -11,8 +11,9 @@ def push_repo(remote_name='origin', branch_name='master', local_branch_name=None
         options += '-f'
     local('git push%s %s %s' % (options, remote_name, full_branch_name))
 
-def clone_repo(remote_url, repo_dir):
-    local('git clone %s %s' % (remote_url, repo_dir))
+def clone_repo(remote_url, repo_dir, local_branch=None):
+    branch_arg = "-b {}".format(local_branch) if local_branch is None else ''
+    local('git clone %s %s %s' % (branch_arg, remote_url, repo_dir))
 
 @synchronize('ensure_remote.lock')
 def ensure_remote(remote_name, remote_url):

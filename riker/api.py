@@ -162,13 +162,15 @@ class Repo(object):
         ssh.add_to_known_hosts(git_remote_host)
         if not isdir(self.path):
             local('mkdir -p {}'.format(self.path))
-            git.clone_repo(self.remote_url, self.path)
+            git.clone_repo(self.remote_url, self.path, self.local_branch)
         else:
             git.ensure_is_repo(self.path)
             with lcd(self.path):
+                local_branch = self.local_branch if self.local_branch is not None else 'master'
                 local('git reset --hard HEAD')
-                local('git checkout master')
-                local('git pull origin master')
+                local('git pull origin {}'.format(local_branch))
+                local('git fetch')
+                local('git checkout {}'.format(local_branch))
 
     def head_commit_id(self):
         with lcd(self.path):
