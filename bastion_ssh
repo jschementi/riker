@@ -1,0 +1,1 @@
+ssh -o "ProxyCommand ssh -i ~/.riker/riker.pem ec2-user@ec2-xxx-xxx-xxx-xxx.compute-1.amazonaws.com nc %h %p" $@

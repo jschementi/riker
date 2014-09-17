@@ -46,7 +46,7 @@ s3_website_regions = {
 aws = None
 
 def get_public_dns(instances):
-    return [inst.public_dns_name for inst in instances]
+    return [inst.private_ip_address for inst in instances]
 
 def ensure_running(instances, timeout=600, poll_delay=10):
     if len(instances) == 0:
@@ -84,14 +84,15 @@ def ensure_complete(image_ids, timeout=1200, poll_delay=10):
 
 class AWS(object):
 
-    def __init__(self, key_pair_name, security_groups, base_image, instance_type, vpc_id, availability_zone, subnet_id):
+    def __init__(self, key_pair_name, security_groups, base_image, instance_type, vpc_id, availability_zone, public_subnet_id, private_subnet_id):
         self.key_pair_name = key_pair_name
         self.security_groups = security_groups
         self.base_image = base_image
         self.instance_type = instance_type
         self.vpc_id = vpc_id
         self.availability_zone = availability_zone
-        self.subnet_id = subnet_id
+        self.public_subnet_id = public_subnet_id
+        self.private_subnet_id = private_subnet_id
 
     def connect(self):
         log('info', 'Connecting to AWS', show_header=True)
@@ -112,7 +113,7 @@ class AWS(object):
                                        instance_type=self.instance_type,
                                        security_group_ids=group_ids,
                                        key_name=self.key_pair_name,
-                                       subnet_id=self.subnet_id)
+                                       subnet_id=self.private_subnet_id)
 
     def create_tags(self, ids, tags):
         log('info', 'tagging resource {}: {}'.format(ids, tags))
@@ -481,19 +482,12 @@ class ssh(object):
     @staticmethod
     @synchronize('add_to_known_hosts.lock')
     def add_to_known_hosts(host):
-        ip = local('dig +short {}'.format(host), capture=True).strip()
         local('ssh-keyscan -H {} >> ~/.ssh/known_hosts'.format(host))
-        local('ssh-keyscan -H {} >> ~/.ssh/known_hosts'.format(ip))
-        local('ssh-keyscan -H {},{} >> ~/.ssh/known_hosts'.format(host, ip))
 
     @staticmethod
     @synchronize('remove_from_known_hosts.lock')
     def remove_from_known_hosts(host):
-        ip = local('dig +short {}'.format(host), capture=True).strip()
-        # http://serverfault.com/questions/132970/can-i-automatically-add-a-new-host-to-known-hosts
         local('ssh-keygen -R {}'.format(host))
-        local('ssh-keygen -R {}'.format(ip))
-        local('ssh-keygen -R {},{}'.format(host, ip))
 
 env.use_ssh_config = True
 
@@ -511,7 +505,8 @@ container_template_name = config['base_instance_name']
 instance_key_pair_name = config['instance_key_pair_name']
 vpc_id = config['vpc_id']
 availability_zone = config['availability_zone']
-subnet_id = config['subnet_id']
+public_subnet_id = config['public_subnet_id']
+private_subnet_id = config['private_subnet_id']
 def create_sgrs(memo, kvp):
     name = kvp[0]
     rules = kvp[1]
@@ -584,7 +579,8 @@ def deploy_to_single_instance(app_name, env_name):
     aws = AWS(key_pair_name=config['instance_key_pair_name'],
               vpc_id=vpc_id,
               availability_zone=availability_zone,
-              subnet_id=subnet_id,
+              public_subnet_id=public_subnet_id,
+              private_subnet_id=private_subnet_id,
               security_groups=SECURITY_GROUPS,
               base_image=os_image_id,
               instance_type=instance_type)
@@ -594,6 +590,7 @@ def deploy_to_single_instance(app_name, env_name):
     aws.setup()
 
     env.key_filename = get_pem_filename(instance_key_pair_name)
+    env.gateway = 'ec2-user@ec2-xxx-xxx-xxx-xxx.compute-1.amazonaws.com'
 
     os_image = aws.conn.get_image(os_image_id)
 
@@ -629,7 +626,8 @@ def create_app_ami(app_name, env_name):
     aws = AWS(key_pair_name=config['instance_key_pair_name'],
               vpc_id=vpc_id,
               availability_zone=availability_zone,
-              subnet_id=subnet_id,
+              public_subnet_id=public_subnet_id,
+              private_subnet_id=private_subnet_id,
               security_groups=SECURITY_GROUPS,
               base_image=os_image_id,
               instance_type=instance_type)
@@ -639,6 +637,7 @@ def create_app_ami(app_name, env_name):
     aws.setup()
 
     env.key_filename = get_pem_filename(instance_key_pair_name)
+    env.gateway = 'ec2-user@ec2-xxx-xxx-xxx-xxx.compute-1.amazonaws.com'
 
     os_image = aws.conn.get_image(os_image_id)
 
@@ -679,13 +678,15 @@ def deploy_config_update(app_name, env_name):
     aws = AWS(key_pair_name=config['instance_key_pair_name'],
               vpc_id=vpc_id,
               availability_zone=availability_zone,
-              subnet_id=subnet_id,
+              private_subnet_id=private_subnet_id,
+              public_subnet_id=public_subnet_id,
               security_groups=SECURITY_GROUPS,
               base_image=os_image_id,
               instance_type=instance_type)
     aws.connect()
     aws.setup()
     env.key_filename = get_pem_filename(instance_key_pair_name)
+    env.gateway = 'ec2-user@ec2-xxx-xxx-xxx-xxx.compute-1.amazonaws.com'
     os_image = aws.conn.get_image(os_image_id)
     group_ids=[aws.get_security_group_id('instance')]
     app = App(env_name, app_name)
@@ -707,7 +708,8 @@ def deploy_latest_app_ami(app_name, env_name):
     aws = AWS(key_pair_name=config['instance_key_pair_name'],
               vpc_id=vpc_id,
               availability_zone=availability_zone,
-              subnet_id=subnet_id,
+              private_subnet_id=private_subnet_id,
+              public_subnet_id=public_subnet_id,
               security_groups=SECURITY_GROUPS,
               base_image=os_image_id,
               instance_type=instance_type)
@@ -813,7 +815,7 @@ def deploy_latest_app_ami(app_name, env_name):
                               load_balancers=[load_balancer_name], launch_config=lc,
                               desired_capacity=desired_capacity, min_size=min_size, max_size=max_size,
                               health_check_type='ELB', health_check_period='300',
-                              vpc_zone_identifier=subnet_id)
+                              vpc_zone_identifier=aws.private_subnet_id)
         as_conn.create_auto_scaling_group(ag)
     else:
         log('info', 'Found {}'.format(group_name))
@@ -1044,7 +1046,7 @@ def get_ssh_command(inst_id):
     ec2 = boto.connect_ec2()
     instance = ec2.get_only_instances(instance_ids=[inst_id])[0]
     pem_filename = get_pem_filename(instance_key_pair_name)
-    return 'ssh -i {} {}@{}'.format(pem_filename, config['instance_user'], instance.public_dns_name)
+    return 'ssh -i {} -o "ProxyCommand ssh -i {} {} nc %h %p" {}@{}'.format(pem_filename, pem_filename, env.gateway, config['instance_user'], instance.private_ip_address)
 
 def get_dokku_command(inst_id, cmd):
     ec2 = boto.connect_ec2()
@@ -1073,7 +1075,7 @@ def get_info(app_name, env_name):
         if len(instances) > 0:
             for instance in instances:
                 print '-----> Instance {}'.format(instance.id)
-                print '       DNS:   {}'.format(instance.public_dns_name)
+                print '       IP:   {}'.format(instance.private_ip_address)
                 print '       SSH:   {}'.format(get_ssh_command(instance.id))
             return
         else:
@@ -1090,7 +1092,7 @@ def get_info(app_name, env_name):
         print '       ID:    {}'.format(inst_id)
         print '       State: {}'.format(inst.state)
         instance = ec2.get_only_instances(instance_ids=[inst_id])[0]
-        print '       DNS:   {}'.format(instance.public_dns_name)
+        print '       IP:    {}'.format(instance.private_ip_address)
         print '       SSH:   {}'.format(get_ssh_command(inst_id))
     if i == 0:
         print '-----> Instances'
