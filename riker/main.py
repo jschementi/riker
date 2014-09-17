@@ -21,7 +21,6 @@ Options:
   -f, --force                     Force deployment.
   -h --help                       Show this screen.
   --version                       Show version.
-
 """
 
 from fabric.network import disconnect_all
