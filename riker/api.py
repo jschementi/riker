@@ -1,6 +1,7 @@
 import sys
 from os import walk, getcwd
 from os.path import join, isdir, expanduser, relpath, normpath, basename
+import os.path
 from operator import itemgetter
 import datetime
 import time
@@ -962,8 +963,12 @@ def deploy_static(app_name, env_name, domain, force):
     for dirname, dirnames, filenames in walk(root):
         reldirname = relpath(dirname, root)
         reldirname = '' if reldirname == '.' else reldirname
+        if os.path.commonprefix(['.git', reldirname]) == '.git':
+            continue
         for filename in filenames:
             full_filename = join(reldirname, filename)
+            if full_filename == '.s3':
+                continue
             new_or_update = '        '
             if existing_keys.has_key(full_filename):
                 new_or_update = '[UPDATE]'
