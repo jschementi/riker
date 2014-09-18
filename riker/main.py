@@ -1,11 +1,11 @@
 """Heroku-like deployments with AWS
 
 Usage:
-  riker deploy --app <app-name> --env <env-name> [--single] [--static --domain <domain-name>] [--force]
-  riker create-new-ami --app <app-name> --env <env-name>
-  riker deploy-ami --app <app-name> --env <env-name>
-  riker update-config --app <app-name> --env <env-name>
-  riker get-info --app <app-name> --env <env-name>
+  riker deploy [--app <app-name>] [--env <env-name>] [--scale] [--static --domain <domain-name>] [--force]
+  riker create-new-ami [--app <app-name>] [--env <env-name>]
+  riker deploy-ami [--app <app-name>] [--env <env-name>]
+  riker update-config [--app <app-name>] [--env <env-name>]
+  riker info [--app <app-name>] [--env <env-name>]
   riker ssh --instance-id <instance-id>
   riker dokku --instance-id <instance-id> <cmd>...
   riker (-h | --help)
@@ -14,10 +14,10 @@ Usage:
 Options:
   -a <app>, --app <app>           Name of app.
   -e <env>, --env <env>           Environment for app.
-  -s, --static                    App is static.
+  -s, --static                    Deploy to S3.
   -d <domain>, --domain <domain>  Domain for app.
   --instance-id <instance-id>     EC2 Instance ID.
-  --single                        Deploy to a single instance.
+  --scale                         Enable scalable deployments.
   -f, --force                     Force deployment.
   -h --help                       Show this screen.
   --version                       Show version.
@@ -33,29 +33,29 @@ def main(arguments):
     try:
         if arguments.get('create-new-ami') == True:
             create_new_ami(arguments)
-        if arguments.get('deploy-ami') == True:
+        elif arguments.get('deploy-ami') == True:
             deploy_ami(arguments)
-        if arguments.get('deploy') == True:
-            if arguments.get('--static') == True:
-                deploy_static(arguments)
-            elif arguments.get('--single') == True:
-                deploy_to_single_instance(arguments)
-            else:
-                deploy(arguments)
-        if arguments.get('update-config') == True:
+        elif arguments.get('deploy') == True:
+            deploy(arguments)
+        elif arguments.get('update-config') == True:
             update_config(arguments)
-        if arguments.get('get-info') == True:
+        elif arguments.get('info') == True:
             get_info(arguments)
-        if arguments.get('ssh') == True:
+        elif arguments.get('ssh') == True:
             ssh(arguments)
-        if arguments.get('dokku') == True:
+        elif arguments.get('dokku') == True:
             dokku(arguments)
     finally:
         disconnect_all()
 
 def deploy(arguments):
-    create_new_ami(arguments)
-    deploy_ami(arguments)
+    if arguments.get('--scale') == True:
+        create_new_ami(arguments)
+        deploy_ami(arguments)
+    elif api.is_static(arguments):
+        deploy_static(arguments)
+    else:
+        deploy_to_single_instance(arguments)
 
 def create_new_ami(arguments):
     api.create_app_ami(arguments['--app'], arguments['--env'])
@@ -69,8 +69,6 @@ def update_config(arguments):
 
 def deploy_static(arguments):
     domain = arguments.get('--domain')
-    if not domain:
-        raise Exception("Must provide --domain <domain-name>")
     force = arguments.get('--force')
     api.deploy_static(arguments['--app'], arguments['--env'], domain, force)
 

@@ -1,11 +1,12 @@
 import sys
-from os import walk
-from os.path import join, isdir, expanduser, relpath, normpath
+from os import walk, getcwd
+from os.path import join, isdir, expanduser, relpath, normpath, basename
 from operator import itemgetter
 import datetime
 import time
 import re
 import json
+import uuid
 
 import boto
 import boto.ec2
@@ -135,12 +136,13 @@ class AWS(object):
 
 class Repo(object):
 
-    def __init__(self, name, remote_url=None, remote_branch=None, local_branch=None):
+    def __init__(self, name, path, remote_url=None, remote_branch=None, local_branch=None):
         self.remote_url = remote_url
         self.remote_branch = remote_branch
         self.local_branch = local_branch
         self.name = name
-        self.app_config = apps[name]
+        self._path = path
+        self.app_config = apps.get(name, {})
 
         self.set_prop_from_app_config('remote_url')
         self.set_prop_from_app_config('remote_branch')
@@ -152,10 +154,11 @@ class Repo(object):
 
     @property
     def path(self):
-        return expanduser(join(config_dir, 'apps', self.name))
+        return self._path or expanduser(join(config_dir, 'apps', self.name))
 
     @synchronize('repo_fetch.lock')
     def fetch(self):
+        if self._path: return
         log('info', 'Fetching app {} from {} to {}'.format(self.name, self.remote_url, self.path), show_header=True)
         git_remote_host = giturlparse.parse(self.remote_url).host
         ssh.remove_from_known_hosts(git_remote_host)
@@ -183,8 +186,16 @@ class Repo(object):
 class App(object):
 
     def __init__(self, env_name, app_name):
+        if app_name is None:
+            git.ensure_is_repo(getcwd())
+            app_path = getcwd()
+            app_name = basename(app_path)
+        else:
+            app_path = None
+        if env_name is None:
+            env_name = 'dev'
         self.env_name = env_name
-        self.repo = Repo(app_name)
+        self.repo = Repo(app_name, app_path)
 
     @property
     def name(self):
@@ -505,7 +516,7 @@ env.user = config['instance_user']
 DEPLOY_USER = config['deploy_user']
 os_image_id = config['os_image_id']
 instance_type = config['instance_type']
-apps = config['apps']
+apps = config.get('apps', {})
 DEPLOY_REMOTE_NAME = config['deploy_remote_name']
 container_template_name = config['base_instance_name']
 instance_key_pair_name = config['instance_key_pair_name']
@@ -890,7 +901,7 @@ def deploy_latest_app_ami(app_name, env_name):
 
 def deploy_static(app_name, env_name, domain, force):
     app = App(env_name, app_name)
-    bucket_name = domain
+    bucket_name = domain or '{}-{}'.format(config.get('system_name', uuid.uuid1().hex), app.repo.name)
 
     app.repo.fetch()
 
@@ -1004,39 +1015,41 @@ def deploy_static(app_name, env_name, domain, force):
 
     print '=====> Deployed to {}!'.format(b.get_website_endpoint())
 
-    # TODO: support redirection from www.<domain>
-    # b_www = 'www.{}'.format(bucket_name)
+    if domain is not None:
 
-    ec2 = boto.connect_ec2()
-    region_name = first([z.region.name for z in ec2.get_all_zones() if z.name == availability_zone])
-    s3_website_region = s3_website_regions[region_name]
+        # TODO: support redirection from www.<domain>
+        # b_www = 'www.{}'.format(bucket_name)
 
-    route53 = boto.connect_route53()
-    zone_name = "{}.".format(get_tld("http://{}".format(domain)))
-    zone = route53.get_zone(zone_name)
-    if zone is None:
-        raise Exception("Cannot find zone {}".format(zone_name))
-    full_domain = "{}.".format(domain)
-    a_record = zone.get_a(full_domain)
-    if not a_record:
-        print '-----> Creating ALIAS for {} to S3'.format(full_domain)
-        changes = ResourceRecordSets(route53, zone.id)
-        change_a = changes.add_change('CREATE', full_domain, 'A')
-        change_a.set_alias(alias_hosted_zone_id=s3_website_region[1], alias_dns_name=s3_website_region[0])
-        #change_cname = records.add_change('CREATE', 'www.' + full_domain, 'CNAME')
-        #change_cname.add_value(b_www.get_website_endpoint())
-        changes.commit()
-    else:
-        print '-----> ALIAS for {} to S3 already exists'.format(full_domain)
-        print '       {}'.format(a_record)
-        if a_record.alias_dns_name != s3_website_region[0]:
-            print '       WARNING: Alias DNS name is {}, but should be {}'.format(a_record.alias_dns_name, s3_website_region[0])
-        if a_record.alias_hosted_zone_id != s3_website_region[1]:
-            print '       WARNING: Alias hosted zone ID is {}, but should be {}'.format(a_record.alias_hosted_zone_id, s3_website_region[1])
-        if a_record.name != full_domain:
-            print '       WARNING: Domain is {}, but should be {}'.format(a_record.name, full_domain)
-        if a_record.type != 'A':
-            print '       WARNING: Record type is {}, but should be {}'.format(a_record.type, 'A')
+        ec2 = boto.connect_ec2()
+        region_name = first([z.region.name for z in ec2.get_all_zones() if z.name == availability_zone])
+        s3_website_region = s3_website_regions[region_name]
+
+        route53 = boto.connect_route53()
+        zone_name = "{}.".format(get_tld("http://{}".format(domain)))
+        zone = route53.get_zone(zone_name)
+        if zone is None:
+            raise Exception("Cannot find zone {}".format(zone_name))
+        full_domain = "{}.".format(domain)
+        a_record = zone.get_a(full_domain)
+        if not a_record:
+            print '-----> Creating ALIAS for {} to S3'.format(full_domain)
+            changes = ResourceRecordSets(route53, zone.id)
+            change_a = changes.add_change('CREATE', full_domain, 'A')
+            change_a.set_alias(alias_hosted_zone_id=s3_website_region[1], alias_dns_name=s3_website_region[0])
+            #change_cname = records.add_change('CREATE', 'www.' + full_domain, 'CNAME')
+            #change_cname.add_value(b_www.get_website_endpoint())
+            changes.commit()
+        else:
+            print '-----> ALIAS for {} to S3 already exists'.format(full_domain)
+            print '       {}'.format(a_record)
+            if a_record.alias_dns_name != s3_website_region[0]:
+                print '       WARNING: Alias DNS name is {}, but should be {}'.format(a_record.alias_dns_name, s3_website_region[0])
+            if a_record.alias_hosted_zone_id != s3_website_region[1]:
+                print '       WARNING: Alias hosted zone ID is {}, but should be {}'.format(a_record.alias_hosted_zone_id, s3_website_region[1])
+            if a_record.name != full_domain:
+                print '       WARNING: Domain is {}, but should be {}'.format(a_record.name, full_domain)
+            if a_record.type != 'A':
+                print '       WARNING: Record type is {}, but should be {}'.format(a_record.type, 'A')
 
     print '=====> DONE!'
 
