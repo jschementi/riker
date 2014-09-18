@@ -23,7 +23,6 @@ def write_private_key_to_pem_file(key_pair, get_pem_filename):
         raise RuntimeError('%s already exists' % filename)
     with open(filename, 'w') as f:
         utils.log('info', 'writing private key to %s' % filename)
-        import pdb; pdb.set_trace()
         f.write(key_pair.material)
     os.chmod(filename, 0600)
     fabric.api.local('ssh-add %s' % (filename,))
