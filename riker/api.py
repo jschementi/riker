@@ -14,7 +14,6 @@ from boto.ec2.elb import HealthCheck
 from boto.ec2.autoscale import LaunchConfiguration
 from boto.ec2.autoscale import AutoScalingGroup
 from boto.ec2.elb.attributes import ConnectionDrainingAttribute
-#import fabric
 from fabric.api import task, run, local, env, sudo, lcd, execute, put
 from fabric.contrib.files import exists, append, sed
 from fabric.operations import reboot
@@ -28,7 +27,8 @@ from config import load_config, config_dir
 from utils import poll_for_condition, log, first
 from retry import synchronize
 
-# fabric.state.output.everything = False
+import fabric
+fabric.state.output.everything = False
 
 # http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_website_region_endpoints
 s3_website_regions = {
