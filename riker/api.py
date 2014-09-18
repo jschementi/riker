@@ -183,7 +183,8 @@ class Repo(object):
     def get_deploy_remote_url(self, host):
         return '{}@{}:{}'.format(DEPLOY_USER, host, self.name)
 
-
+class NoAppFoundError(Exception):
+    pass
 class App(object):
 
     def __init__(self, env_name, app_name):
@@ -1113,3 +1114,45 @@ def get_info(app_name, env_name):
     if i == 0:
         print '-----> Instances'
         print '       None'
+
+def get_url(app_name, env_name):
+    protocol = 'http://' # TODO detect if load balancer supports HTTPS
+    app = App(env_name, app_name)
+    bucket_name = '{}-{}'.format(config.get('system_name', uuid.uuid1().hex), app.repo.name)
+
+    ec2 = boto.connect_ec2()
+    elb = boto.connect_elb()
+    s3 = boto.connect_s3()
+
+    b = s3.lookup(bucket_name)
+    if b is not None:
+        return protocol + b.get_website_endpoint()
+
+    lb = None
+    try:
+        lbresult = elb.get_all_load_balancers(load_balancer_names=['{}-{}'.format(app.env_name, app.repo.name)])
+        lb = lbresult[0] if len(lbresult) > 0 else None
+    except boto.exception.BotoServerError:
+        pass
+    if lb is None:
+        instances = ec2.get_only_instances(filters={'tag:Name': app.name,
+                                                    'tag:deployed': 'true',
+                                                    'instance-state-name': 'running'})
+        if len(instances) != 1:
+            return None
+        else:
+            return protocol + instances[0].public_dns_name
+    return protocol + lb.dns_name
+
+def is_static(arguments):
+    return arguments['--static'] or os.path.exists(join(getcwd(), '.s3'))
+
+def open_url(app_name, env_name):
+    import webbrowser
+    url = get_url(app_name, env_name)
+    if not url:
+        print "=====> Error: No running application found."
+        return False
+    print '-----> Opening {}'.format(url)
+    webbrowser.open_new(url)
+

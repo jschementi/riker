@@ -8,6 +8,8 @@ Usage:
   riker info [--app <app-name>] [--env <env-name>]
   riker ssh --instance-id <instance-id>
   riker dokku --instance-id <instance-id> <cmd>...
+  riker open [--app <app-name>] [--env <env-name>]
+  riker url [--app <app-name>] [--env <env-name>]
   riker (-h | --help)
   riker --version
 
@@ -45,6 +47,10 @@ def main(arguments):
             ssh(arguments)
         elif arguments.get('dokku') == True:
             dokku(arguments)
+        elif arguments.get('open') == True:
+            open_url(arguments)
+        elif arguments.get('url') == True:
+            get_url(arguments)
     finally:
         disconnect_all()
 
@@ -84,6 +90,13 @@ def ssh(arguments):
 def dokku(arguments):
     cmd = ' '.join(arguments.get('<cmd>', ''))
     api.dokku(arguments['--instance-id'], cmd)
+
+def open_url(arguments):
+    api.open_url(arguments['--app'], arguments['--env'])
+
+def get_url(arguments):
+    url = api.get_url(arguments['--app'], arguments['--env'])
+    if url: print url
 
 if __name__ == '__main__':
     arguments = docopt(__doc__, version='riker 1.0')
