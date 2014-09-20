@@ -25,7 +25,7 @@ import pybars
 
 import git_helpers as git
 import boto_helpers
-from config import load_config, config_dir
+import config as riker_config
 from utils import poll_for_condition, log, first
 from retry import synchronize
 
@@ -46,6 +46,8 @@ s3_website_regions = {
 }
 
 aws = None
+initialized = False
+config = riker_config.default_config()
 
 def get_public_dns(instances):
     return [inst.public_dns_name for inst in instances]
@@ -85,6 +87,16 @@ def ensure_complete(image_ids, timeout=1200, poll_delay=10):
         poll_for_condition(get_image(image_id), is_image_available, timeout, poll_delay)
 
 class AWS(object):
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(key_pair_name=config['instance_key_pair_name'],
+                   vpc_id=config['vpc_id'],
+                   availability_zone=config['availability_zone'],
+                   subnet_id=config['subnet_id'],
+                   security_groups=config['security_groups'],
+                   base_image=config['os_image_id'],
+                   instance_type=config['instance_type'])
 
     def __init__(self, key_pair_name, security_groups, base_image, instance_type, vpc_id, availability_zone, subnet_id):
         self.key_pair_name = key_pair_name
@@ -143,7 +155,7 @@ class Repo(object):
         self.local_branch = local_branch
         self.name = name
         self._path = path
-        self.app_config = apps.get(name, {})
+        self.app_config = config.get('apps', {}).get(name, {})
 
         self.set_prop_from_app_config('remote_url')
         self.set_prop_from_app_config('remote_branch')
@@ -155,7 +167,7 @@ class Repo(object):
 
     @property
     def path(self):
-        return self._path or expanduser(join(config_dir, 'apps', self.name))
+        return self._path or expanduser(join(riker_config.directory, 'apps', self.name))
 
     @synchronize('repo_fetch.lock')
     def fetch(self):
@@ -181,7 +193,7 @@ class Repo(object):
             return git.get_head_commit_sha1()
 
     def get_deploy_remote_url(self, host):
-        return '{}@{}:{}'.format(DEPLOY_USER, host, self.name)
+        return '{}@{}:{}'.format(config['deploy_user'], host, self.name)
 
 class NoAppFoundError(Exception):
     pass
@@ -322,7 +334,7 @@ class AppInstance(CachedObject):
             repo_path = self.app.repo.path
             remote_branch = self.app.repo.remote_branch
             local_branch = self.app.repo.local_branch
-            remote_name = DEPLOY_REMOTE_NAME
+            remote_name = config['deploy_remote_name']
             log('info', 'Deploying app: {}'.format(app_name), show_header=True)
             git.ensure_is_repo(repo_path)
             with lcd(repo_path):
@@ -466,7 +478,7 @@ class BaseInstance(CachedObject):
         run('curl -sL https://raw.github.com/progrium/dokku/v0.2.3/bootstrap.sh > ~/dokku-install.sh')
         sudo('DOKKU_TAG=v0.2.3 bash ~/dokku-install.sh; rm -f ~/dokku-install.sh')
         put('~/.ssh/id_rsa.pub', '~', mirror_local_mode=True)
-        run('cat ~/id_rsa.pub | sudo sshcommand acl-add {} ubuntu'.format(DEPLOY_USER))
+        run('cat ~/id_rsa.pub | sudo sshcommand acl-add {} ubuntu'.format(config['deploy_user']))
         run('rm ~/id_rsa.pub')
         reboot(wait=5*60)
         sudo('git clone https://github.com/statianzo/dokku-supervisord.git /var/lib/dokku/plugins/dokku-supervisord')
@@ -508,36 +520,11 @@ class ssh(object):
         local('ssh-keygen -R {}'.format(ip))
         local('ssh-keygen -R {},{}'.format(host, ip))
 
-env.use_ssh_config = True
-
-config = load_config()
-if config is None:
-    sys.exit(1)
-
-env.user = config['instance_user']
-DEPLOY_USER = config['deploy_user']
-os_image_id = config['os_image_id']
-instance_type = config['instance_type']
-apps = config.get('apps', {})
-DEPLOY_REMOTE_NAME = config['deploy_remote_name']
-container_template_name = config['base_instance_name']
-instance_key_pair_name = config['instance_key_pair_name']
-vpc_id = config['vpc_id']
-availability_zone = config['availability_zone']
-subnet_id = config['subnet_id']
-def create_sgrs(memo, kvp):
-    name = kvp[0]
-    rules = kvp[1]
-    sgrs = [boto_helpers.SecurityGroupRule(*rule) for rule in rules]
-    memo[name] = sgrs
-    return memo
-SECURITY_GROUPS = reduce(create_sgrs, config['security_groups'].iteritems(), {})
-
 def get_pem_filename(name):
-    return expanduser(join(config_dir, '{}.pem'.format(name)))
+    return expanduser(join(riker_config.directory, '{}.pem'.format(name)))
 
 def get_config_path(env_name):
-    return expanduser(join(config_dir, 'envs', env_name))
+    return expanduser(join(riker_config.directory, 'envs', env_name))
 
 def terminate_instances(instance_ids):
     log('info', 'Terminating instances: {}'.format(instance_ids), show_header=True)
@@ -551,7 +538,7 @@ def get_config(app, env):
             cfg = f.read().replace("\n", ' ').strip()
         return cfg
     except IOError:
-        pass
+        return None
 
 def test_docker_installation():
     sudo('docker run -i -t ubuntu /bin/bash -c "uname -a"')
@@ -564,8 +551,8 @@ def update_config(app, env, clear='yes'):
         log('info', "No configuration found for {}".format(app))
         return
     if clear == 'yes':
-        sudo('truncate -s0 /home/{}/{}/ENV'.format(DEPLOY_USER, app), user=DEPLOY_USER)
-    sudo('dokku config:set {} {}'.format(app, cfg), user=DEPLOY_USER)
+        sudo('truncate -s0 /home/{}/{}/ENV'.format(config['deploy_user'], app), user=config['deploy_user'])
+    sudo('dokku config:set {} {}'.format(app, cfg), user=config['deploy_user'])
 
     # make nginx pass-through x-forwarded-* headers
     nginx_transparent_forward = """map $http_x_forwarded_proto $real_scheme {
@@ -594,23 +581,18 @@ def ps():
 
 def deploy_to_single_instance(app_name, env_name):
     global aws
-    aws = AWS(key_pair_name=config['instance_key_pair_name'],
-              vpc_id=vpc_id,
-              availability_zone=availability_zone,
-              subnet_id=subnet_id,
-              security_groups=SECURITY_GROUPS,
-              base_image=os_image_id,
-              instance_type=instance_type)
+
+    aws = AWS.from_config(config)
 
     aws.connect()
 
     aws.setup()
 
-    env.key_filename = get_pem_filename(instance_key_pair_name)
+    env.key_filename = get_pem_filename(aws.key_pair_name)
 
-    os_image = aws.conn.get_image(os_image_id)
+    os_image = aws.conn.get_image(aws.base_image)
 
-    group_ids=[aws.get_security_group_id('instance')]
+    group_ids=[aws.get_security_group_id('riker-instance')]
 
     app = App(env_name, app_name)
 
@@ -637,30 +619,24 @@ def deploy_to_single_instance(app_name, env_name):
     print '=====> DONE!'
 
 def create_app_ami(app_name, env_name):
-
     global aws
-    aws = AWS(key_pair_name=config['instance_key_pair_name'],
-              vpc_id=vpc_id,
-              availability_zone=availability_zone,
-              subnet_id=subnet_id,
-              security_groups=SECURITY_GROUPS,
-              base_image=os_image_id,
-              instance_type=instance_type)
+
+    aws = AWS.from_config(config)
 
     aws.connect()
 
     aws.setup()
 
-    env.key_filename = get_pem_filename(instance_key_pair_name)
+    env.key_filename = get_pem_filename(aws.key_pair_name)
 
-    os_image = aws.conn.get_image(os_image_id)
+    os_image = aws.conn.get_image(aws.base_image)
 
-    group_ids=[aws.get_security_group_id('instance')]
+    group_ids=[aws.get_security_group_id('riker-instance')]
 
     app = App(env_name, app_name)
 
-    base_image = BaseImage(name=container_template_name,
-                           base_instance=BaseInstance(name=container_template_name,
+    base_image = BaseImage(name=config['base_instance_name'],
+                           base_instance=BaseInstance(name=config['base_instance_name'],
                                                       image=os_image,
                                                       group_ids=group_ids)
                           ).get_or_create()
@@ -689,20 +665,14 @@ def create_app_ami(app_name, env_name):
 
 def deploy_config_update(app_name, env_name):
     global aws
-    aws = AWS(key_pair_name=config['instance_key_pair_name'],
-              vpc_id=vpc_id,
-              availability_zone=availability_zone,
-              subnet_id=subnet_id,
-              security_groups=SECURITY_GROUPS,
-              base_image=os_image_id,
-              instance_type=instance_type)
+    aws = AWS.from_config(config)
     aws.connect()
     aws.setup()
-    env.key_filename = get_pem_filename(instance_key_pair_name)
-    os_image = aws.conn.get_image(os_image_id)
-    group_ids=[aws.get_security_group_id('instance')]
+    env.key_filename = get_pem_filename(aws.key_pair_name)
+    os_image = aws.conn.get_image(aws.base_image)
+    group_ids=[aws.get_security_group_id('riker-instance')]
     app = App(env_name, app_name)
-    base_image = BaseImage(name=container_template_name, base_instance=BaseInstance(name=container_template_name, image=os_image, group_ids=group_ids)).get_or_create()
+    base_image = BaseImage(name=config['base_instance_name'], base_instance=BaseInstance(name=config['base_instance_name'], image=os_image, group_ids=group_ids)).get_or_create()
     existing_app_image = LatestAppImage(app).get()
     if not existing_app_image:
         raise Exception("Need previous deployment to update config!")
@@ -717,18 +687,12 @@ def deploy_config_update(app_name, env_name):
 def deploy_latest_app_ami(app_name, env_name):
 
     global aws
-    aws = AWS(key_pair_name=config['instance_key_pair_name'],
-              vpc_id=vpc_id,
-              availability_zone=availability_zone,
-              subnet_id=subnet_id,
-              security_groups=SECURITY_GROUPS,
-              base_image=os_image_id,
-              instance_type=instance_type)
+    aws = AWS.from_config(config)
 
     aws.connect()
 
-    lb_group_ids=[aws.get_security_group_id('load-balancer')]
-    inst_group_ids=[aws.get_security_group_id('instance')]
+    lb_group_ids=[aws.get_security_group_id('riker-load-balancer')]
+    inst_group_ids=[aws.get_security_group_id('riker-instance')]
 
     app = App(env_name, app_name)
 
@@ -826,7 +790,7 @@ def deploy_latest_app_ami(app_name, env_name):
                               load_balancers=[load_balancer_name], launch_config=lc,
                               desired_capacity=desired_capacity, min_size=min_size, max_size=max_size,
                               health_check_type='ELB', health_check_period='300',
-                              vpc_zone_identifier=subnet_id)
+                              vpc_zone_identifier=aws.subnet_id)
         as_conn.create_auto_scaling_group(ag)
     else:
         log('info', 'Found {}'.format(group_name))
@@ -1027,7 +991,7 @@ def deploy_static(app_name, env_name, domain, force):
         # b_www = 'www.{}'.format(bucket_name)
 
         ec2 = boto.connect_ec2()
-        region_name = first([z.region.name for z in ec2.get_all_zones() if z.name == availability_zone])
+        region_name = first([z.region.name for z in ec2.get_all_zones() if z.name == config['availability_zone']])
         s3_website_region = s3_website_regions[region_name]
 
         route53 = boto.connect_route53()
@@ -1062,13 +1026,13 @@ def deploy_static(app_name, env_name, domain, force):
 def get_ssh_command(inst_id):
     ec2 = boto.connect_ec2()
     instance = ec2.get_only_instances(instance_ids=[inst_id])[0]
-    pem_filename = get_pem_filename(instance_key_pair_name)
+    pem_filename = get_pem_filename(config['instance_key_pair_name'])
     return 'ssh -i {} {}@{}'.format(pem_filename, config['instance_user'], instance.public_dns_name)
 
 def get_dokku_command(inst_id, cmd):
     ec2 = boto.connect_ec2()
     instance = ec2.get_only_instances(instance_ids=[inst_id])[0]
-    return 'ssh {}@{} {}'.format(DEPLOY_USER, instance.public_dns_name, cmd)
+    return 'ssh {}@{} {}'.format(config['deploy_user'], instance.public_dns_name, cmd)
 
 def do_ssh(inst_id):
     local(get_ssh_command(inst_id))
@@ -1156,3 +1120,11 @@ def open_url(app_name, env_name):
     print '-----> Opening {}'.format(url)
     webbrowser.open_new(url)
 
+def initialize_configuration(show_output=False):
+    global config
+    global initialized
+    if not initialized:
+        config = riker_config.load_config(show_output)
+        env.user = config['instance_user']
+        env.use_ssh_config = True
+        initialized = True

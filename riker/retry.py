@@ -5,7 +5,7 @@ from os.path import exists as local_exists, join
 from fabric.api import run, local
 from fabric.contrib.files import exists
 
-from config import config_dir
+import config
 
 def retry(tries=10, wait=0.5, on_none=False, on_empty=False, retry_message="."):
     def deco_retry(f):
@@ -29,7 +29,7 @@ def retry(tries=10, wait=0.5, on_none=False, on_empty=False, retry_message="."):
     return deco_retry
 
 def synchronize(lock_file_path, is_remote=False):
-    lock_file_path = join(config_dir, lock_file_path)
+    lock_file_path = join(config.directory, lock_file_path)
     run_fn = run if is_remote else local
     exists_fn = exists if is_remote else local_exists
     def deco_sync(f):
