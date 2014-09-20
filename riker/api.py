@@ -598,23 +598,15 @@ def deploy_to_single_instance(app_name, env_name):
 
     app.repo.fetch()
 
-    instances = aws.conn.get_only_instances(filters={'tag:Name': app.name,
-                                                     'tag:deployed': 'true',
-                                                     'instance-state-name': 'running'})
-    instance_ids = [inst.id for inst in instances]
-    if len(instances) == 0:
-        reservation = aws.run_instance(group_ids, os_image.id)
-        instances = reservation.instances
-        instance_ids = [inst.id for inst in instances]
-        aws.create_tags(instance_ids, {
-            'Name': app.name,
-            'deployed': 'false'
-        })
-        bi = BaseInstance(None, None, None)
-        bi.provision_instances(instances)
+    base_image = BaseImage(name=config['base_instance_name'],
+                           base_instance=BaseInstance(name=config['base_instance_name'],
+                                                      image=os_image,
+                                                      group_ids=group_ids)
+                         ).get_or_create()
 
-    ai = AppInstance(app, None, None)
-    ai.deploy_instances(instances)
+    app_inst = AppInstance(app=app, image=base_image, group_ids=group_ids)
+    app_instances = app_inst.get_or_create()
+    app_inst.deploy_instances(app_instances)
 
     print '=====> DONE!'
 
@@ -1099,7 +1091,7 @@ def get_url(app_name, env_name):
     except boto.exception.BotoServerError:
         pass
     if lb is None:
-        instances = ec2.get_only_instances(filters={'tag:Name': app.name,
+        instances = ec2.get_only_instances(filters={'tag:app': app.name,
                                                     'tag:deployed': 'true',
                                                     'instance-state-name': 'running'})
         if len(instances) != 1:
