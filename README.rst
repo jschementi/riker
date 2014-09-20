@@ -1,6 +1,15 @@
-=====
-Riker
-=====
+::
+
+  ██████╗ ██╗██╗  ██╗███████╗██████╗
+  ██╔══██╗██║██║ ██╔╝██╔════╝██╔══██╗
+  ██████╔╝██║█████╔╝ █████╗  ██████╔╝
+  ██╔══██╗██║██╔═██╗ ██╔══╝  ██╔══██╗
+  ██║  ██║██║██║  ██╗███████╗██║  ██║
+  ╚═╝  ╚═╝╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+
+
+*Your the captian, and Riker is your "Number One"*
+
 
 Heroku-like application deployments to Amazon Web Services.
 
@@ -60,7 +69,7 @@ You can also deploy a static website to S3 with the same command:
   riker open
 
 
-The .s3 file indicates that this app should be deployed to S3.
+The ``.s3`` file indicates that this app should be deployed to S3.
 
 Riker also supports a production deploy mode, which ensures zero-downtime for
 the application being deployed, and a configuration which supports auto-scaling.
@@ -80,7 +89,7 @@ This will deploy the app behind a load-balancer and auto-scaling group.
 Contributing
 ------------
 
-Please report bugs, suggest features, and ask questions on GitHub: 
+Please report bugs, suggest features, and ask questions on GitHub:
 https://github.com/jschementi/riker/issues
 
 Pull requests welcome!
