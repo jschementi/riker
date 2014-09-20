@@ -32,7 +32,8 @@ from docopt import docopt
 
 import api
 
-def main(arguments):
+def main():
+    arguments = docopt(__doc__, version='riker 0.1')
     try:
         if arguments.get('create-new-ami') == True:
             create_new_ami(arguments)
@@ -115,5 +116,4 @@ def config(arguments):
     api.initialize_configuration(show_output=True)
 
 if __name__ == '__main__':
-    arguments = docopt(__doc__, version='riker 1.0')
-    main(arguments)
+    main()
