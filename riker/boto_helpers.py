@@ -27,6 +27,16 @@ def write_private_key_to_pem_file(key_pair, get_pem_filename):
     os.chmod(filename, 0600)
     fabric.api.local('ssh-add %s' % (filename,))
 
+def get_security_group(c, group_name):
+    groups = [g for g in c.get_all_security_groups() if g.name == group_name]
+    return groups[0] if groups else None
+
+##############################################################################
+# Based off of steder/aws_sg_recipe.py: https://gist.github.com/steder/1498451
+##############################################################################
+
+SecurityGroupRule = collections.namedtuple("SecurityGroupRule", ["ip_protocol", "from_port", "to_port", "cidr_ip", "src_group_name"])
+
 def ensure_security_groups(conn, security_groups, vpc_id):
     groups = []
     for group_name, rules in security_groups:
@@ -34,12 +44,6 @@ def ensure_security_groups(conn, security_groups, vpc_id):
         update_security_group(conn, group, rules)
         groups.append(group)
     return groups
-
-SecurityGroupRule = collections.namedtuple("SecurityGroupRule", ["ip_protocol", "from_port", "to_port", "cidr_ip", "src_group_name"])
-
-def get_security_group(c, group_name):
-    groups = [g for g in c.get_all_security_groups() if g.name == group_name]
-    return groups[0] if groups else None
 
 def get_or_create_security_group(c, group_name, description="", vpc_id=None):
     """
@@ -118,4 +122,5 @@ def update_security_group(c, group, expected_rules):
         if rule not in current_rules:
             authorize(c, group, rule)
 
+##############################################################################
 
