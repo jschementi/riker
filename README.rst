@@ -89,3 +89,8 @@ https://github.com/jschementi/riker/issues
 Pull requests welcome!
 https://github.com/jschementi/riker/pulls
 
+
+Additional Resources
+--------------------
+
+- `Riker - Heroku-like app deployments for AWS <http://jimmy.schementi.com/riker-heroku-like-app-deploy-for-aws/>`_
