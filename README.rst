@@ -2,7 +2,7 @@
 Riker
 =====
 
-*Your the captian, and Riker is your "Number One"*
+*You're the captain, and Riker is your "Number One"*
 
 
 Heroku-like application deployments to Amazon Web Services.
