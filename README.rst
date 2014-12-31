@@ -94,3 +94,4 @@ Additional Resources
 --------------------
 
 - `Riker - Heroku-like app deployments for AWS <http://jimmy.schementi.com/riker-heroku-like-app-deploy-for-aws/>`_
+- `BrooklynJS talk: Get Your Infrastructure Right <http://jimmy.schementi.com/get-infrastructure-right/>`_
