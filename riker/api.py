@@ -475,8 +475,8 @@ class BaseInstance(CachedObject):
         https://github.com/progrium/dokku
         """
         log('info', 'Installing dokku', show_header=True)
-        run('curl -sL https://raw.github.com/progrium/dokku/v0.2.3/bootstrap.sh > ~/dokku-install.sh')
-        sudo('DOKKU_TAG=v0.2.3 bash ~/dokku-install.sh; rm -f ~/dokku-install.sh')
+        run('curl -sL https://raw.github.com/progrium/dokku/v0.3.15/bootstrap.sh > ~/dokku-install.sh')
+        sudo('DOKKU_TAG=v0.3.15 bash ~/dokku-install.sh; rm -f ~/dokku-install.sh')
         put('~/.ssh/id_rsa.pub', '~', mirror_local_mode=True)
         run('cat ~/id_rsa.pub | sudo sshcommand acl-add {} ubuntu'.format(config['deploy_user']))
         run('rm ~/id_rsa.pub')
@@ -489,6 +489,7 @@ class BaseInstance(CachedObject):
     # @synchronize('install_mosh.lock', is_remote=True)
     def install_mosh(self):
         log('info', 'Installing mosh', show_header=True)
+        sudo('apt-get update -y')
         sudo('apt-get install -y python-software-properties')
         sudo('add-apt-repository -y ppa:keithw/mosh')
         sudo('apt-get update -y')
