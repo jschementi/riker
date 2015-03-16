@@ -16,7 +16,7 @@ from boto.ec2.elb import HealthCheck
 from boto.ec2.autoscale import LaunchConfiguration
 from boto.ec2.autoscale import AutoScalingGroup
 from boto.ec2.elb.attributes import ConnectionDrainingAttribute
-from fabric.api import task, run, local, env, sudo, lcd, execute, put
+from fabric.api import task, run, local, env, sudo, lcd, execute, put, settings
 from fabric.contrib.files import exists, append, sed
 from fabric.operations import reboot
 import giturlparse
@@ -30,7 +30,7 @@ from utils import poll_for_condition, log, first
 from retry import synchronize
 
 import fabric
-fabric.state.output.everything = False
+fabric.state.output.everything = True
 
 # http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_website_region_endpoints
 s3_website_regions = {
@@ -534,6 +534,7 @@ def terminate_instances(instance_ids):
 def get_config(app, env):
     config_path = get_config_path(env)
     cfg_path = join(config_path, '{}.env'.format(app))
+    log('info', "looking for config at cfg_path: {}".format(cfg_path))
     try:
         with open(cfg_path) as f:
             cfg = f.read().replace("\n", ' ').strip()

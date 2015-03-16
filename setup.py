@@ -14,7 +14,7 @@ setup(
     install_requires=[
         "boto == 2.31.1",
         "docopt == 0.6.2",
-        "Fabric == 1.9.0",
+        "Fabric == 1.10.1",
         "giturlparse.py == 0.0.5",
         "pybars==0.0.4",
         "tld==0.6.4"
