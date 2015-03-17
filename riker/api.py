@@ -16,7 +16,7 @@ from boto.ec2.elb import HealthCheck
 from boto.ec2.autoscale import LaunchConfiguration
 from boto.ec2.autoscale import AutoScalingGroup
 from boto.ec2.elb.attributes import ConnectionDrainingAttribute
-from fabric.api import task, run, local, env, sudo, lcd, execute, put, settings
+from fabric.api import task, run, local, env, sudo, lcd, execute, put
 from fabric.contrib.files import exists, append, sed
 from fabric.operations import reboot
 import giturlparse
