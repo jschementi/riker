@@ -489,10 +489,9 @@ class BaseInstance(CachedObject):
     # @synchronize('install_mosh.lock', is_remote=True)
     def install_mosh(self):
         log('info', 'Installing mosh', show_header=True)
-        sudo('apt-get update -y')
-        sudo('apt-get install -y python-software-properties')
         sudo('add-apt-repository -y ppa:keithw/mosh')
         sudo('apt-get update -y')
+        sudo('apt-get install -y python-software-properties')
         sudo('apt-get install -y mosh')
 
     # @synchronize('configure_nginx.lock', is_remote=True)
