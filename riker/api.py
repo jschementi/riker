@@ -30,7 +30,7 @@ from utils import poll_for_condition, log, first
 from retry import synchronize
 
 import fabric
-fabric.state.output.everything = False
+fabric.state.output.everything = True
 
 # http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_website_region_endpoints
 s3_website_regions = {
@@ -475,8 +475,8 @@ class BaseInstance(CachedObject):
         https://github.com/progrium/dokku
         """
         log('info', 'Installing dokku', show_header=True)
-        run('curl -sL https://raw.github.com/progrium/dokku/v0.2.3/bootstrap.sh > ~/dokku-install.sh')
-        sudo('DOKKU_TAG=v0.2.3 bash ~/dokku-install.sh; rm -f ~/dokku-install.sh')
+        run('curl -sL https://raw.github.com/progrium/dokku/v0.3.15/bootstrap.sh > ~/dokku-install.sh')
+        sudo('DOKKU_TAG=v0.3.15 bash ~/dokku-install.sh; rm -f ~/dokku-install.sh')
         put('~/.ssh/id_rsa.pub', '~', mirror_local_mode=True)
         run('cat ~/id_rsa.pub | sudo sshcommand acl-add {} ubuntu'.format(config['deploy_user']))
         run('rm ~/id_rsa.pub')
@@ -489,9 +489,9 @@ class BaseInstance(CachedObject):
     # @synchronize('install_mosh.lock', is_remote=True)
     def install_mosh(self):
         log('info', 'Installing mosh', show_header=True)
-        sudo('apt-get install -y python-software-properties')
         sudo('add-apt-repository -y ppa:keithw/mosh')
         sudo('apt-get update -y')
+        sudo('apt-get install -y python-software-properties')
         sudo('apt-get install -y mosh')
 
     # @synchronize('configure_nginx.lock', is_remote=True)
@@ -533,6 +533,7 @@ def terminate_instances(instance_ids):
 def get_config(app, env):
     config_path = get_config_path(env)
     cfg_path = join(config_path, '{}.env'.format(app))
+    log('info', "looking for config at cfg_path: {}".format(cfg_path))
     try:
         with open(cfg_path) as f:
             cfg = f.read().replace("\n", ' ').strip()
