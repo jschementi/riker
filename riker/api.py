@@ -1028,6 +1028,8 @@ def get_dokku_command(inst_id, cmd):
     return 'ssh {}@{} {}'.format(config['deploy_user'], instance.public_dns_name, cmd)
 
 def do_ssh(inst_id):
+    if inst_id == None:
+        inst_id = get_info(None, None)[0]['instance_id']
     local(get_ssh_command(inst_id))
 
 def dokku(inst_id, cmd):
@@ -1037,24 +1039,28 @@ def get_info(app_name, env_name):
     ec2 = boto.connect_ec2()
     elb = boto.connect_elb()
     lb = None
+    app = App(env_name, app_name)
     try:
         lbresult = elb.get_all_load_balancers(load_balancer_names=['{}-{}'.format(env_name, app_name)])
         lb = lbresult[0] if len(lbresult) > 0 else None
     except boto.exception.BotoServerError:
         pass
     if lb is None:
-        instances = ec2.get_only_instances(filters={'tag:Name': '{}/{}'.format(env_name, app_name),
+        instances = ec2.get_only_instances(filters={'tag:app': '{}/{}'.format(app.env_name, app.repo.name),
                                                     'tag:deployed': 'true',
                                                     'instance-state-name': 'running'})
-        if len(instances) > 0:
-            for instance in instances:
-                print '-----> Instance {}'.format(instance.id)
-                print '       DNS:   {}'.format(instance.public_dns_name)
-                print '       SSH:   {}'.format(get_ssh_command(instance.id))
-            return
-        else:
+        datas = [{'instance_id': instance.id,
+                 'public_dns_name': instance.public_dns_name,
+                 'ssh_command': get_ssh_command(instance.id)} for instance in instances]
+        for data in datas:
+            print '-----> Instance {}'.format(data['instance_id'])
+            print '       DNS:   {}'.format(data['public_dns_name'])
+            print '       SSH:   {}'.format(data['ssh_command'])
+        if len(datas) == 0:
             print 'No deployment found'
             sys.exit(1)
+        else:
+            return datas
     print '-----> Load Balancer'
     print '       Name: {}'.format(lb.name)
     print '       DNS:  {}'.format(lb.dns_name)

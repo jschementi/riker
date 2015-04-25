@@ -6,7 +6,7 @@ Usage:
   riker deploy-ami [--app <app-name>] [--env <env-name>]
   riker update-config [--app <app-name>] [--env <env-name>]
   riker info [--app <app-name>] [--env <env-name>]
-  riker ssh --instance-id <instance-id>
+  riker ssh [--instance-id <instance-id>]
   riker dokku --instance-id <instance-id> <cmd>...
   riker open [--app <app-name>] [--env <env-name>]
   riker url [--app <app-name>] [--env <env-name>]
