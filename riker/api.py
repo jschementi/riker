@@ -309,7 +309,7 @@ class AppInstance(CachedObject):
         print '-----> Looking for app instance to deploy to: {} (image: {})'.format(self.app.name, self.image.id)
         return aws.conn.get_only_instances(filters={'tag:app': self.app.name,
                                                     'tag:app_instance': 'true',
-                                                    'tag:deployed': 'false',
+                                                    'tag:deployed': 'true',
                                                     'image-id': self.image.id,
                                                     'instance-state-name': 'running'})
 
