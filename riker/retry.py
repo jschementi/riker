@@ -37,10 +37,11 @@ def synchronize(lock_file_path, is_remote=False):
         def f_sync(*args, **kwargs):
             while True:
                 if not exists_fn(lock_file_path):
-                    run_fn('mkdir -p $(dirname {0}) && touch {0}'.format(lock_file_path))
-                    result = f(*args, **kwargs)
-                    run_fn('rm {}'.format(lock_file_path))
-                    return result
+                    try:
+                        run_fn('mkdir -p $(dirname {0}) && touch {0}'.format(lock_file_path))
+                        return f(*args, **kwargs)
+                    finally:
+                        run_fn('rm -f {}'.format(lock_file_path))
                 time.sleep(5)
         return f_sync
     return deco_sync
