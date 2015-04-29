@@ -26,6 +26,8 @@ Options:
   --version                       Show version.
 """
 
+import os
+
 from fabric.network import disconnect_all
 
 from docopt import docopt
@@ -33,7 +35,9 @@ from docopt import docopt
 import api
 
 def main():
-    arguments = docopt(__doc__, version='riker 0.1')
+    with open(os.path.join(os.path.dirname(__file__), '../VERSION.txt')) as version:
+        VERSION = version.read().strip()
+    arguments = docopt(__doc__, version='riker {}'.format(VERSION))
     try:
         if arguments.get('create-new-ami') == True:
             create_new_ami(arguments)
