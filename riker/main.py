@@ -34,9 +34,9 @@ from docopt import docopt
 
 import api
 
+from version import VERSION
+
 def main():
-    with open(os.path.join(os.path.dirname(__file__), '../VERSION.txt')) as version:
-        VERSION = version.read().strip()
     arguments = docopt(__doc__, version='riker {}'.format(VERSION))
     try:
         if arguments.get('create-new-ami') == True:
