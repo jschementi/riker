@@ -197,19 +197,26 @@ class Repo(object):
 
 class NoAppFoundError(Exception):
     pass
+
 class App(object):
 
     def __init__(self, env_name, app_name):
-        if app_name is None:
-            git.ensure_is_repo(getcwd())
+        if git.is_repo(getcwd()):
             app_path = getcwd()
-            app_name = basename(app_path)
         else:
             app_path = None
+
+        if app_name is None:
+            if app_path is not None:
+                app_name = basename(app_path)
+            else:
+                raise Exception("Riker App: either provide an app name, or " +
+                                "current directory must be a git repo")
+        self.repo = Repo(app_name, app_path)
+
         if env_name is None:
             env_name = 'dev'
         self.env_name = env_name
-        self.repo = Repo(app_name, app_path)
 
     @property
     def name(self):
