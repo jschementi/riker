@@ -1,12 +1,16 @@
 from os.path import isdir, join
 
 from fabric.api import local
+from fabric.context_managers import settings
 
 from retry import synchronize
 
 def push_repo(remote_name='origin', branch_name=None, local_branch_name=None, auto_confirm=False, force=False):
     if branch_name is None:
         branch_name = 'master'
+    with settings(warn_only=True):
+        if local('git branch | grep {}'.format(local_branch_name if local_branch_name is not None else branch_name)).return_code != 0:
+            local_branch_name = 'HEAD'
     full_branch_name = branch_name if local_branch_name is None else '%s:%s' % (local_branch_name, branch_name)
     options = ' '
     if force:
