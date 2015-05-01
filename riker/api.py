@@ -347,6 +347,10 @@ class AppInstance(CachedObject):
             with lcd(repo_path):
                 git.ensure_remote(remote_name, self.app.repo.get_deploy_remote_url(env.host))
                 ssh.add_to_known_hosts(env.host)
+                put('~/.ssh/id_rsa.pub', '~', mirror_local_mode=True)
+                run('sudo sshcommand acl-remove {} ubuntu'.format(config['deploy_user']), warn_only=True)
+                run('cat ~/id_rsa.pub | sudo sshcommand acl-add {} ubuntu'.format(config['deploy_user']))
+                run('rm ~/id_rsa.pub')
                 git.push_repo(remote_name, branch_name=remote_branch, local_branch_name=local_branch, auto_confirm=True)
             # make dokku (nginx) serve this app for any server name
             # this is OK since we're only deploying one app per server
@@ -484,9 +488,6 @@ class BaseInstance(CachedObject):
         log('info', 'Installing dokku', show_header=True)
         run('curl -sL https://raw.github.com/progrium/dokku/v0.3.15/bootstrap.sh > ~/dokku-install.sh')
         sudo('DOKKU_TAG=v0.3.15 bash ~/dokku-install.sh; rm -f ~/dokku-install.sh')
-        put('~/.ssh/id_rsa.pub', '~', mirror_local_mode=True)
-        run('cat ~/id_rsa.pub | sudo sshcommand acl-add {} ubuntu'.format(config['deploy_user']))
-        run('rm ~/id_rsa.pub')
         reboot(wait=5*60)
         sudo('git clone https://github.com/statianzo/dokku-supervisord.git /var/lib/dokku/plugins/dokku-supervisord')
         sudo('git clone https://github.com/neam/dokku-custom-domains.git /var/lib/dokku/plugins/custom-domains')
